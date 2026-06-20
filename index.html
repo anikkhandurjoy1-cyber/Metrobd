@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MetroBD — প্রিমিয়াম গ্যাজেট শপ</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;800;900&family=Inter:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 <style>
 :root{
   --primary:#0095B6;--primary2:#7B2FFF;--accent:#FF2D78;
@@ -651,11 +653,25 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:22px
 // ══════════════════════════════════
 // DATA
 // ══════════════════════════════════
+// ══════════════════════════════════
+// FIREBASE INIT
+// ══════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyAxKeYJ44HkX43z1i_VXtud3eT5mfiekLo",
+  authDomain: "metrobd-d3c80.firebaseapp.com",
+  projectId: "metrobd-d3c80",
+  storageBucket: "metrobd-d3c80.firebasestorage.app",
+  messagingSenderId: "917963996661",
+  appId: "1:917963996661:web:dffe0b1ebe128f56a2f4bc"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const STORE_DOC = db.collection('metrobd').doc('store');
+
+// Cart stays local per-device (LocalStorage is fine for this)
 const gd=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d;}catch(e){return d;}};
 const sd=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
-let products=gd('mb_products',[]);
-let categories=gd('mb_categories',[]);
-let settings=gd('mb_settings',{});
+let products=[], categories=[], settings={};
 let cart=gd('mb_cart',[]);
 let curCat='all', curProd=null, curQty=1, delType='outside', selPayType='cod';
 
@@ -974,11 +990,18 @@ function submitOrder(){
   const sub=p?(p.sale||p.regular||0)*(curQty||1):0;
   const payNames={cod:'Cash on Delivery',bkash:'bKash - 01917635134',nagad:'Nagad - 01917635134',rocket:'Rocket'};
   const order={id:Date.now(),invoice:'MB'+String(Date.now()).slice(-6),name,phone,address,product:p?p.name:'Manual',productId:p?p.id:null,qty:curQty||1,price:p?(p.sale||p.regular||0):0,delivery:del,total:sub+del,payment:payNames[selPayType]||'COD',note:document.getElementById('o-note').value,deliveryType:delType,status:'Processing',date:new Date().toISOString().split('T')[0],time:new Date().toLocaleTimeString(),isNew:true};
-  const orders=gd('mb_orders',[]);orders.push(order);sd('mb_orders',orders);
-  document.getElementById('order-form-wrap').style.display='none';
-  document.getElementById('order-success').style.display='block';
-  const sp=document.getElementById('success-phone');if(sp)sp.textContent=phone;
-  curProd=null;curQty=1;
+  const btn=document.querySelector('.submit-btn');
+  if(btn){btn.textContent='⏳ অপেক্ষা করুন...';btn.disabled=true;}
+  STORE_DOC.update({orders:firebase.firestore.FieldValue.arrayUnion(order)}).then(()=>{
+    document.getElementById('order-form-wrap').style.display='none';
+    document.getElementById('order-success').style.display='block';
+    const sp=document.getElementById('success-phone');if(sp)sp.textContent=phone;
+    curProd=null;curQty=1;
+  }).catch(err=>{
+    console.error(err);
+    showToast('অর্ডার করতে সমস্যা হয়েছে, আবার চেষ্টা করুন','#EF4444');
+    if(btn){btn.textContent='✅ অর্ডার কনফার্ম করুন';btn.disabled=false;}
+  });
 }
 
 // ══════════════════════════════════
@@ -1026,32 +1049,23 @@ document.querySelectorAll('.mo').forEach(m=>m.addEventListener('click',function(
 function showToast(msg,bg='#22C55E'){const el=document.getElementById('toast');el.textContent=msg;el.style.background=bg;el.style.display='block';setTimeout(()=>el.style.display='none',2500);}
 
 // ══════════════════════════════════
-// INIT
+// INIT — Firestore real-time listener
 // ══════════════════════════════════
-applySettings();
-renderCategories();
 updateCart();
 
-// Demo products
-if(!products.length){
-  products=[
-    {id:1,name:'TWS Earbuds Pro X5',category:'Electronics',regular:2500,sale:1899,status:'Active',imageUrl:'',videoUrl:'',desc:'High quality wireless earbuds'},
-    {id:2,name:'Smart Watch Ultra',category:'Electronics',regular:4500,sale:3499,status:'Active',imageUrl:''},
-    {id:3,name:'Power Bank 20000mAh',category:'Electronics',regular:1800,sale:1299,status:'Active',imageUrl:''},
-    {id:4,name:'Ring Light 10 inch',category:'Photography',regular:1400,sale:899,status:'Active',imageUrl:''},
-    {id:5,name:'Fast Charger 65W',category:'Electronics',regular:1100,sale:699,status:'Active',imageUrl:''},
-    {id:6,name:'Mini Drone HD',category:'Electronics',regular:6500,sale:4999,status:'Active',imageUrl:''},
-  ];
-  sd('mb_products',products);
-}
-renderProducts();
-
-// Sync with admin
-window.addEventListener('storage',e=>{
-  if(['mb_products','mb_categories','mb_settings'].includes(e.key)){
-    products=gd('mb_products',[]);categories=gd('mb_categories',[]);settings=gd('mb_settings',{});
-    applySettings();renderCategories();renderProducts();
+STORE_DOC.onSnapshot(doc=>{
+  if(doc.exists){
+    const d=doc.data();
+    products=d.products||[];
+    categories=d.categories||[];
+    settings=d.settings||{};
   }
+  applySettings();
+  renderCategories();
+  renderProducts();
+}, err=>{
+  console.error('Firebase sync error:',err);
+  showToast('ডাটা লোড করতে সমস্যা — ইন্টারনেট চেক করুন','#EF4444');
 });
 </script>
 </body>
