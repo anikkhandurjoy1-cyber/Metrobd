@@ -5,8 +5,59 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MetroBD Admin Panel</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800;900&family=Inter:wght@400;500;600;700&family=Hind+Siliguri:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js">
+// ════════════════════════════════════════════════════════════════
+// REFACTORED SAVE FUNCTIONS (Multi-Collection Architecture)
+// ════════════════════════════════════════════════════════════════
+
+function saveStoreDoc() {
+  return STORE_DOC.set({categories,couriers,settings,banners},{merge:true})
+    .catch(err=>{ console.error(err); toast('সেভ করতে সমস্যা','var(--red)'); throw err; });
+}
+
+function saveProductDoc(prod) {
+  if(!prod) return Promise.reject('No product');
+  const id = prod.id ? String(prod.id) : undefined;
+  const data = {...prod};
+  delete data.id;
+  return id ? PRODUCTS_COL.doc(id).set(data,{merge:true}) : PRODUCTS_COL.add(data).then(ref=>{ prod.id = ref.id; });
+}
+
+function deleteProductDoc(id) {
+  return PRODUCTS_COL.doc(String(id)).delete();
+}
+
+function saveOrderDoc(ord) {
+  if(!ord) return Promise.reject('No order');
+  const id = ord.id ? String(ord.id) : undefined;
+  const data = {...ord};
+  delete data.id;
+  return id ? ORDERS_COL.doc(id).set(data,{merge:true}) : ORDERS_COL.add(data).then(ref=>{ ord.id = ref.id; });
+}
+
+function updateOrderDoc(id, updateData) {
+  return ORDERS_COL.doc(String(id)).update(updateData);
+}
+
+function deleteOrderDoc(id) {
+  return ORDERS_COL.doc(String(id)).delete();
+}
+
+function saveUserDoc(u) {
+  if(!u) return Promise.reject('No user');
+  const id = u.id ? String(u.id) : undefined;
+  const data = {...u};
+  delete data.id;
+  return id ? USERS_COL.doc(id).set(data,{merge:true}) : USERS_COL.add(data).then(ref=>{ u.id = ref.id; });
+}
+
+function deleteUserDoc(id) {
+  return USERS_COL.doc(String(id)).delete();
+}
+
+</script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
 <style>
 :root{
   --primary:#E0007A;--primary2:#FF6B2B;--accent:#0095B6;
@@ -727,10 +778,13 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+const auth = firebase.auth();
 const STORE_DOC = db.collection('metrobd').doc('store');
+const PRODUCTS_COL = db.collection('metrobd_products');
+const ORDERS_COL = db.collection('metrobd_orders');
+const USERS_COL = db.collection('metrobd_users');
 const IMGBB_API_KEY = "3b6c1d56d21a4c3f52beb52c55859a28";
 
-// LocalStorage fallback helpers (used only for admin password + cart-like local prefs)
 const gd = (k,d) => { try{ return JSON.parse(localStorage.getItem(k))||d; }catch(e){ return d; } };
 const sd = (k,v) => localStorage.setItem(k, JSON.stringify(v));
 
@@ -738,45 +792,94 @@ let orders = [];
 let products = [];
 let categories = [];
 let couriers = [{id:1,name:'Pathao',charge:100,status:'Active'},{id:2,name:'RedX',charge:100,status:'Active'},{id:3,name:'Sundarban',charge:80,status:'Active'}];
-let users = [{id:1,name:'Super Admin',phone:'',email:'admin@metrobd.com',type:'Admin',status:'Active'}];
+let users = [];
 let settings = {};
 let banners = [];
-let adminPass = gd('mb_pass','admin123');
 let dataLoaded = false;
 
-let unsubscribeStore=null;
-function startRealtimeSync(){
-  if(unsubscribeStore) return;
-  unsubscribeStore=STORE_DOC.onSnapshot(doc=>{
-    if(!doc.exists) return;
-    const d=doc.data();
-    orders=d.orders||[]; products=d.products||[]; categories=d.categories||[];
-    couriers=d.couriers&&d.couriers.length?d.couriers:couriers;
-    users=d.users&&d.users.length?d.users:users;
-    settings=d.settings||{}; banners=d.banners||[];
-    // Re-render whichever page is currently active so admin always sees fresh data
-    const active=document.querySelector('.page.active');
-    if(active){
-      const pid=active.id.replace('pg-','');
-      if(pid==='dashboard') updateDashboard();
-      else if(pid==='incomplete') renderIncomplete();
-      else if(pid==='orders') renderOrders();
-      else if(pid==='products') renderProducts();
-      else if(pid==='categories') renderCats();
-      else if(pid==='couriers') renderCouriers();
-      else if(pid==='banners') renderBanners();
-      else if(pid==='users') renderUsers();
-    }
+// Auth state listener — automatically show/hide panels
+auth.onAuthStateChanged(user=>{
+  if(user){
+    if(!dataLoaded) loadAllData().then(()=>{ startRealtimeSync(); dataLoaded=true; });
+    document.getElementById('login-page').style.display='none';
+    document.getElementById('admin-panel').style.display='block';
+    updateDashboard();
     updateCourierSelects();
-  }, err=>{
-    console.error('Firebase sync error:',err);
-    toast('সিঙ্ক করতে সমস্যা — ইন্টারনেট চেক করুন','var(--red)');
+    const btn=document.querySelector('.login-btn');
+    if(btn){btn.textContent='🔐 Login';btn.disabled=false;}
+  } else {
+    document.getElementById('admin-panel').style.display='none';
+    document.getElementById('login-page').style.display='flex';
+  }
+});
+
+function loadAllData(){
+  return Promise.all([
+    STORE_DOC.get(),
+    PRODUCTS_COL.get(),
+    ORDERS_COL.get(),
+    USERS_COL.get()
+  ]).then(([storeDoc,prodSnap,orderSnap,userSnap])=>{
+    const d=storeDoc.exists?storeDoc.data():{};
+    categories=d.categories||[];
+    couriers=d.couriers&&d.couriers.length?d.couriers:couriers;
+    settings=d.settings||{};
+    banners=d.banners||[];
+    
+    products=prodSnap.docs.map(doc=>({id:doc.id,...doc.data()}));
+    orders=orderSnap.docs.map(doc=>({id:doc.id,...doc.data()}));
+    users=userSnap.docs.map(doc=>({id:doc.id,...doc.data()}));
   });
 }
 
-function saveAll(){
-  return STORE_DOC.set({orders,products,categories,couriers,users,settings,banners},{merge:true})
-    .catch(err=>{ console.error('Firebase save error:',err); toast('সেভ করতে সমস্যা — ইন্টারনেট চেক করুন','var(--red)'); throw err; });
+let unsubStore=null, unsubProds=null, unsubOrders=null, unsubUsers=null;
+function startRealtimeSync(){
+  if(unsubStore) return;
+  
+  unsubStore=STORE_DOC.onSnapshot(doc=>{
+    if(!doc.exists) return;
+    const d=doc.data();
+    categories=d.categories||[];
+    couriers=d.couriers&&d.couriers.length?d.couriers:couriers;
+    settings=d.settings||{};
+    banners=d.banners||[];
+    rerenderActivePage();
+  }, err=>{ console.error(err); toast('সিঙ্ক সমস্যা','var(--red)'); });
+  
+  unsubProds=PRODUCTS_COL.onSnapshot(snap=>{
+    products=snap.docs.map(doc=>({id:doc.id,...doc.data()}));
+    rerenderActivePage();
+  });
+  
+  unsubOrders=ORDERS_COL.onSnapshot(snap=>{
+    orders=snap.docs.map(doc=>({id:doc.id,...doc.data()}));
+    rerenderActivePage();
+  });
+  
+  unsubUsers=USERS_COL.onSnapshot(snap=>{
+    users=snap.docs.map(doc=>({id:doc.id,...doc.data()}));
+    rerenderActivePage();
+  });
+}
+
+function rerenderActivePage(){
+  const active=document.querySelector('.page.active');
+  if(!active) return;
+  const pid=active.id.replace('pg-','');
+  if(pid==='dashboard') updateDashboard();
+  else if(pid==='incomplete') renderIncomplete();
+  else if(pid==='orders') renderOrders();
+  else if(pid==='products') renderProducts();
+  else if(pid==='categories') renderCats();
+  else if(pid==='couriers') renderCouriers();
+  else if(pid==='banners') renderBanners();
+  else if(pid==='users') renderUsers();
+  updateCourierSelects();
+}
+
+function saveStoreDoc(){
+  return STORE_DOC.set({categories,couriers,settings,banners},{merge:true})
+    .catch(err=>{ console.error(err); toast('সেভ করতে সমস্যা','var(--red)'); throw err; });
 }
 
 let curOF = 'all';
@@ -788,59 +891,47 @@ let curPrintO = null;
 // LOGIN
 // ══════════════════════════════════════════
 function doLogin(){
-  const u = document.getElementById('l-user').value;
+  const u = document.getElementById('l-user').value.trim();
   const p = document.getElementById('l-pass').value;
-  if(u!=='admin'){ document.getElementById('login-err').style.display='block'; return; }
   const btn=document.querySelector('.login-btn');
   if(btn){btn.textContent='⏳ Loading...';btn.disabled=true;}
   document.getElementById('login-err').style.display='none';
-  STORE_DOC.get().then(doc=>{
-    const d=doc.exists?doc.data():{};
-    adminPass = d.adminPass || gd('mb_pass','admin123');
-    if(p===adminPass){
-      orders=d.orders||[]; products=d.products||[]; categories=d.categories||[];
-      couriers=d.couriers&&d.couriers.length?d.couriers:couriers;
-      users=d.users&&d.users.length?d.users:users;
-      settings=d.settings||{}; banners=d.banners||[];
-      dataLoaded=true;
-      startRealtimeSync();
-      document.getElementById('login-page').style.display='none';
-      document.getElementById('admin-panel').style.display='block';
-      updateDashboard();
-      updateCourierSelects();
-      if(btn){btn.textContent='🔐 Login';btn.disabled=false;}
-    } else {
+  
+  auth.signInWithEmailAndPassword(u, p)
+    .then(()=>{
+      // onAuthStateChanged listener এখন handle করবে
+    })
+    .catch(err=>{
+      console.error('Auth error:',err);
       document.getElementById('login-err').style.display='block';
       if(btn){btn.textContent='🔐 Login';btn.disabled=false;}
-    }
-  }).catch(err=>{
-    console.error('Firebase load error:',err);
-    toast('ইন্টারনেট চেক করুন','var(--red)');
-    if(btn){btn.textContent='🔐 Login';btn.disabled=false;}
-  });
+    });
 }
 
 function doLogout(){
-  document.getElementById('admin-panel').style.display='none';
-  document.getElementById('login-page').style.display='flex';
-  document.getElementById('l-pass').value='';
+  auth.signOut().then(()=>{
+    document.getElementById('l-pass').value='';
+  });
 }
 
 function changePass(){
-  const cp = document.getElementById('s-cp').value;
   const np = document.getElementById('s-np').value;
   const cnp = document.getElementById('s-cnp').value;
-  if(cp !== adminPass){ toast('Current password ভুল','var(--red)'); return; }
   if(np !== cnp){ toast('Passwords match করছে না','var(--red)'); return; }
-  if(np.length < 4){ toast('Password কমপক্ষে 4 character','var(--red)'); return; }
-  adminPass = np;
-  STORE_DOC.set({adminPass},{merge:true}).then(()=>{
-    toast('Password changed! ✅');
-  }).catch(err=>{
-    console.error(err);
-    toast('Password change করতে সমস্যা হয়েছে','var(--red)');
-  });
-  ['s-cp','s-np','s-cnp'].forEach(id=>document.getElementById(id).value='');
+  if(np.length < 6){ toast('Password কমপক্ষে 6 character','var(--red)'); return; }
+  
+  const user = auth.currentUser;
+  if(!user){ toast('Login করুন আগে','var(--red)'); return; }
+  
+  user.updatePassword(np)
+    .then(()=>{
+      toast('Password changed! ✅');
+      ['s-np','s-cnp'].forEach(id=>document.getElementById(id).value='');
+    })
+    .catch(err=>{
+      console.error(err);
+      toast('Password change করতে সমস্যা — আবার login করে দেখুন','var(--red)');
+    });
 }
 
 // ══════════════════════════════════════════
