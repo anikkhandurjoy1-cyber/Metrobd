@@ -315,7 +315,6 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:22px
 <!-- DRAGON CANVAS -->
 <canvas id="dragon-canvas"></canvas>
 
-<!-- CURSOR -->
 <!-- OFFER TIMER -->
 <div class="offer-timer">
   <span>🔥 অফার শেষ হচ্ছে!</span>
@@ -651,9 +650,6 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:22px
 
 <script>
 // ══════════════════════════════════
-// DATA
-// ══════════════════════════════════
-// ══════════════════════════════════
 // FIREBASE INIT
 // ══════════════════════════════════
 const firebaseConfig = {
@@ -666,7 +662,16 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+
+// Old single-document store: still used for categories & settings (small, slow-changing data).
 const STORE_DOC = db.collection('metrobd').doc('store');
+// Products live in their own collection now — customer site only ever reads from here,
+// never touching the (potentially large) orders collection.
+const PRODUCTS_COL = db.collection('metrobd_products');
+// New orders go straight into their own collection as individual documents instead of being
+// appended to one big array inside STORE_DOC. This avoids ever hitting Firestore's 1MB document
+// limit as order volume grows, and avoids customers' write requests competing for the same doc.
+const ORDERS_COL = db.collection('metrobd_orders');
 
 // Cart stays local per-device (LocalStorage is fine for this)
 const gd=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d;}catch(e){return d;}};
@@ -806,16 +811,12 @@ goBanner(0);
 // BOTTOM NAV TABS
 // ══════════════════════════════════
 function showTab(tab){
-  const homeSections=['home-section','cats-section','shop-section','reviews-section'];
-  const shopSections=['cats-section','shop-section'];
-  // Hide all
   document.getElementById('home-section').style.display='none';
   document.getElementById('cats-section').style.display='none';
   document.getElementById('shop-section').style.display='none';
   document.getElementById('reviews-section').style.display='none';
   document.getElementById('offers-section').classList.remove('active');
   document.getElementById('contact-section').classList.remove('active');
-  // Update nav
   ['home','shop','offers','contact'].forEach(t=>{
     document.getElementById('bn-'+t).classList.toggle('active',t===tab);
   });
@@ -876,7 +877,7 @@ function renderProducts(){
   empty.style.display='none';
   grid.innerHTML=f.map(p=>{
     const disc=p.sale&&p.regular?Math.round((1-p.sale/p.regular)*100):0;
-    return `<div class="pc" onclick="openDetail(${p.id})">
+    return `<div class="pc" onclick="openDetail('${p._docId}')">
       <div class="pc-img"><div class="pc-img-3d">
         ${p.imageUrl?`<img src="${p.imageUrl}" alt="${p.name}" loading="lazy" onerror="this.style.display='none'"><div class="pc-img-ph" style="display:none">📦</div>`:`<div class="pc-img-ph">📦</div>`}
         </div>
@@ -887,19 +888,20 @@ function renderProducts(){
         <div class="pc-cat">${p.category||'General'}</div>
         <div class="pc-name">${p.name}</div>
         <div class="pc-price"><span class="price-now">৳${(p.sale||p.regular||0).toLocaleString()}</span>${p.sale&&p.regular&&p.sale<p.regular?`<span class="price-old">৳${p.regular.toLocaleString()}</span>`:''}</div>
-        <button class="pc-btn" onclick="event.stopPropagation();openOrderModal(${p.id})">অর্ডার করুন</button>
+        <button class="pc-btn" onclick="event.stopPropagation();openOrderModal('${p._docId}')">অর্ডার করুন</button>
       </div>
     </div>`;
   }).join('');
-  // Spring animation
   document.querySelectorAll('.pc').forEach((el,i)=>{el.style.animation='none';void el.offsetWidth;el.style.animation=`springIn .5s cubic-bezier(.34,1.56,.64,1) ${i*.06}s both`;});
 }
 
 // ══════════════════════════════════
 // PRODUCT DETAIL
 // ══════════════════════════════════
-function openDetail(id){
-  const p=products.find(x=>x.id==id);if(!p)return;
+function findProd(docId){ return products.find(x=>x._docId===docId); }
+
+function openDetail(docId){
+  const p=findProd(docId);if(!p)return;
   curProd=p;curQty=1;
   const disc=p.sale&&p.regular?Math.round((1-p.sale/p.regular)*100):0;
   let media='';
@@ -920,8 +922,8 @@ function openDetail(id){
       <button class="qty-btn" onclick="chQty(1)">+</button>
       <span class="qty-total">= <strong>৳<span id="pd-total">${(p.sale||p.regular||0).toLocaleString()}</span></strong></span>
     </div>
-    <button class="pd-order-btn" onclick="openOrderModal(${p.id})">🛒 অর্ডার করুন</button>
-    <button class="pd-cart-btn" onclick="addCart(${p.id});cm('pd-overlay')">+ Cart-এ যোগ করুন</button>
+    <button class="pd-order-btn" onclick="openOrderModal('${p._docId}')">🛒 অর্ডার করুন</button>
+    <button class="pd-cart-btn" onclick="addCart('${p._docId}');cm('pd-overlay')">+ Cart-এ যোগ করুন</button>
     <a class="pd-call-btn" href="tel:01410635134">📞 কল করুন — 01410635134</a>
   `;
   om('pd-overlay');
@@ -956,8 +958,8 @@ function updSumm(){
 // ══════════════════════════════════
 // ORDER
 // ══════════════════════════════════
-function openOrderModal(id){
-  if(id) curProd=products.find(p=>p.id==id)||curProd;
+function openOrderModal(docId){
+  if(docId) curProd=findProd(docId)||curProd;
   document.getElementById('order-form-wrap').style.display='block';
   document.getElementById('order-success').style.display='none';
   const p=curProd;
@@ -989,14 +991,27 @@ function submitOrder(){
   const del=getDelCharge();
   const sub=p?(p.sale||p.regular||0)*(curQty||1):0;
   const payNames={cod:'Cash on Delivery',bkash:'bKash - 01917635134',nagad:'Nagad - 01917635134',rocket:'Rocket'};
-  const order={id:Date.now(),invoice:'MB'+String(Date.now()).slice(-6),name,phone,address,product:p?p.name:'Manual',productId:p?p.id:null,qty:curQty||1,price:p?(p.sale||p.regular||0):0,delivery:del,total:sub+del,payment:payNames[selPayType]||'COD',note:document.getElementById('o-note').value,deliveryType:delType,status:'Processing',date:new Date().toISOString().split('T')[0],time:new Date().toLocaleTimeString(),isNew:true};
+  const now=new Date();
+  // Each order becomes its OWN document in metrobd_orders (not appended to a shared array anymore).
+  // This means many customers can place orders at the same time without write conflicts, and the
+  // orders collection can grow to any size without ever hitting Firestore's 1MB-per-document limit.
+  const order={
+    invoice:'MB'+String(Date.now()).slice(-6),name,phone,address,
+    product:p?p.name:'Manual',productId:p?p.id:null,qty:curQty||1,price:p?(p.sale||p.regular||0):0,
+    delivery:del,total:sub+del,payment:payNames[selPayType]||'COD',
+    note:document.getElementById('o-note').value,deliveryType:delType,status:'Processing',
+    date:now.toISOString().split('T')[0],time:now.toLocaleTimeString(),
+    createdAtTs:firebase.firestore.Timestamp.now(),
+    isNew:true
+  };
   const btn=document.querySelector('.submit-btn');
   if(btn){btn.textContent='⏳ অপেক্ষা করুন...';btn.disabled=true;}
-  STORE_DOC.update({orders:firebase.firestore.FieldValue.arrayUnion(order)}).then(()=>{
+  ORDERS_COL.add(order).then(()=>{
     document.getElementById('order-form-wrap').style.display='none';
     document.getElementById('order-success').style.display='block';
     const sp=document.getElementById('success-phone');if(sp)sp.textContent=phone;
     curProd=null;curQty=1;
+    if(btn){btn.textContent='✅ অর্ডার কনফার্ম করুন';btn.disabled=false;}
   }).catch(err=>{
     console.error(err);
     showToast('অর্ডার করতে সমস্যা হয়েছে, আবার চেষ্টা করুন','#EF4444');
@@ -1019,9 +1034,9 @@ function copyN(n){navigator.clipboard.writeText(n).catch(()=>{});showToast('ন�
 // ══════════════════════════════════
 // CART
 // ══════════════════════════════════
-function addCart(id){
-  const p=products.find(x=>x.id==id);if(!p)return;
-  const ex=cart.find(c=>c.id==id);if(ex)ex.qty++;else cart.push({id:p.id,name:p.name,price:p.sale||p.regular||0,imageUrl:p.imageUrl||'',qty:1});
+function addCart(docId){
+  const p=findProd(docId);if(!p)return;
+  const ex=cart.find(c=>c.id==docId);if(ex)ex.qty++;else cart.push({id:docId,name:p.name,price:p.sale||p.regular||0,imageUrl:p.imageUrl||'',qty:1});
   sd('mb_cart',cart);updateCart();showToast('Cart-এ যোগ হয়েছে ✅');
 }
 function updateCart(){document.getElementById('cart-count').textContent=cart.reduce((a,c)=>a+c.qty,0);}
@@ -1029,14 +1044,14 @@ function openCart(){
   const items=document.getElementById('cart-items'),footer=document.getElementById('cart-footer');
   if(!cart.length){items.innerHTML='<div class="es"><div class="ei">🛒</div><div style="font-family:\'Hind Siliguri\'">Cart খালি</div></div>';footer.style.display='none';}
   else{
-    items.innerHTML=cart.map(c=>`<div class="ci-row"><div class="ci-img">${c.imageUrl?`<img src="${c.imageUrl}" alt="">`:'📦'}</div><div class="ci-info"><div class="ci-name">${c.name}</div><div class="ci-price">৳${(c.price*c.qty).toLocaleString()} (x${c.qty})</div></div><button class="ci-rm" onclick="rmCart(${c.id})">✕</button></div>`).join('');
+    items.innerHTML=cart.map(c=>`<div class="ci-row"><div class="ci-img">${c.imageUrl?`<img src="${c.imageUrl}" alt="">`:'📦'}</div><div class="ci-info"><div class="ci-name">${c.name}</div><div class="ci-price">৳${(c.price*c.qty).toLocaleString()} (x${c.qty})</div></div><button class="ci-rm" onclick="rmCart('${c.id}')">✕</button></div>`).join('');
     const tot=cart.reduce((a,c)=>a+c.price*c.qty,0);
     document.getElementById('cart-total').innerHTML=`<div class="ost-row"><span>মোট</span><span class="ost-total-val">৳${tot.toLocaleString()}</span></div>`;
     footer.style.display='block';
   }
   om('cart-overlay');
 }
-function rmCart(id){cart=cart.filter(c=>c.id!==id);sd('mb_cart',cart);updateCart();openCart();}
+function rmCart(docId){cart=cart.filter(c=>c.id!==docId);sd('mb_cart',cart);updateCart();openCart();}
 function checkoutCart(){cm('cart-overlay');openOrderModal(null);}
 
 // ══════════════════════════════════
@@ -1049,23 +1064,34 @@ document.querySelectorAll('.mo').forEach(m=>m.addEventListener('click',function(
 function showToast(msg,bg='#22C55E'){const el=document.getElementById('toast');el.textContent=msg;el.style.background=bg;el.style.display='block';setTimeout(()=>el.style.display='none',2500);}
 
 // ══════════════════════════════════
-// INIT — Firestore real-time listener
+// INIT
 // ══════════════════════════════════
 updateCart();
 
+// Settings & categories: realtime sync from the small shared store document (fine to keep realtime,
+// this document never grows large since orders/products no longer live inside it).
 STORE_DOC.onSnapshot(doc=>{
   if(doc.exists){
     const d=doc.data();
-    products=d.products||[];
     categories=d.categories||[];
     settings=d.settings||{};
   }
   applySettings();
   renderCategories();
-  renderProducts();
 }, err=>{
-  console.error('Firebase sync error:',err);
-  showToast('ডাটা লোড করতে সমস্যা — ইন্টারনেট চেক করুন','#EF4444');
+  console.error('Firebase settings sync error:',err);
+  showToast('সেটিংস লোড করতে সমস্যা — ইন্টারনেট চেক করুন','#EF4444');
+});
+
+// Products: loaded once on page load from their own (small) collection — NOT realtime by default,
+// since a customer browsing the shop doesn't need millisecond-fresh stock updates, and this avoids
+// re-rendering the whole grid every time an admin edits something elsewhere.
+PRODUCTS_COL.get().then(snap=>{
+  products = snap.docs.map(d=>({...d.data(), _docId:d.id}));
+  renderProducts();
+}).catch(err=>{
+  console.error('Firebase products load error:',err);
+  showToast('পণ্য লোড করতে সমস্যা — ইন্টারনেট চেক করুন','#EF4444');
 });
 </script>
 </body>
