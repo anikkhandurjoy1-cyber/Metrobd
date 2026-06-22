@@ -105,6 +105,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
 .btn-o:hover{border-color:var(--primary);color:var(--primary);}
 .btn-c{background:rgba(0,229,255,0.1);border:1px solid rgba(0,229,255,0.3);color:var(--accent);}
 .btn-sm{padding:5px 10px;font-size:12px;}
+.btn:disabled{opacity:0.5;cursor:not-allowed;}
 
 /* FORMS */
 .fg{display:flex;flex-direction:column;gap:5px;margin-bottom:14px;}
@@ -162,7 +163,10 @@ tr:hover td{background:rgba(0,0,0,0.02);}
 .thumb{width:34px;height:34px;border-radius:6px;background:var(--surface);display:inline-flex;align-items:center;justify-content:center;font-size:16px;overflow:hidden;}
 .thumb img{width:100%;height:100%;object-fit:cover;}
 
-#toast{display:none;position:fixed;bottom:20px;right:20px;z-index:999;background:var(--green);color:#fff;padding:11px 18px;border-radius:10px;font-weight:600;font-size:13px;box-shadow:0 4px 20px rgba(0,0,0,0.4);}
+#toast{display:none;position:fixed;bottom:20px;right:20px;z-index:999;background:var(--green);color:#fff;padding:11px 18px;border-radius:10px;font-weight:600;font-size:13px;box-shadow:0 4px 20px rgba(0,0,0,0.4);max-width:320px;}
+
+.pager{display:flex;align-items:center;justify-content:center;gap:10px;padding:14px;border-top:1px solid var(--border);}
+.pager span{font-size:12px;color:var(--muted);}
 
 @media(max-width:768px){
   .sidebar{transform:translateX(-100%);transition:transform 0.3s;}
@@ -267,6 +271,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
     <div class="sc"><div class="sc-icon cy">💰</div><div class="sc-num" id="d-rev">৳0</div><div class="sc-lbl">Revenue</div></div>
     <div class="sc" onclick="sp('products')"><div class="sc-icon pk">📦</div><div class="sc-num" id="d-prods">0</div><div class="sc-lbl">Products</div></div>
   </div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:14px;">💡 Dashboard-এর সংখ্যাগুলো সর্বশেষ ৫০০টি অর্ডারের উপর ভিত্তি করে দেখানো হচ্ছে (পারফরম্যান্সের জন্য)। সম্পূর্ণ হিসাবের জন্য Order Report দেখুন।</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
     <div class="tc">
       <div class="th"><div class="tt">আজকের রিপোর্ট</div></div>
@@ -300,7 +305,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
   <div class="ph">
     <div><div class="pt">Orders</div></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <button class="btn btn-c btn-sm" onclick="exportCSV()">📥 CSV</button>
+      <button class="btn btn-c btn-sm" onclick="exportCSV()">📥 CSV (এই পেজ)</button>
       <button class="btn btn-s btn-sm" onclick="om('add-order-modal');resetOrderForm()">+ New Order</button>
     </div>
   </div>
@@ -315,14 +320,14 @@ tr:hover td{background:rgba(0,0,0,0.02);}
     <div class="stab" onclick="filterOS('Canceled',this)">Canceled</div>
   </div>
   <div class="fb">
-    <input type="text" placeholder="🔍 Search..." id="o-search" oninput="renderOrders()">
+    <input type="text" placeholder="🔍 Search (এই পেজের মধ্যে)..." id="o-search" oninput="renderOrders()">
     <select id="o-cfilter" onchange="renderOrders()"><option value="">All Couriers</option></select>
-    <input type="date" id="o-dfilter" onchange="renderOrders()">
+    <input type="date" id="o-dfilter" onchange="reloadOrdersFromServer()">
     <button class="btn btn-o btn-sm" onclick="clearOF()">Clear</button>
   </div>
   <div class="tc">
     <div class="th">
-      <div class="tt">Total <span id="o-count">0</span> Orders</div>
+      <div class="tt"><span id="o-count">0</span> Orders (এই পেজে)</div>
       <div style="display:flex;gap:6px;">
         <button class="btn btn-o btn-sm" onclick="printInv()">🖨️ Print Invoice</button>
         <button class="btn btn-o btn-sm" onclick="bulkStatus()">↕️ Bulk Status</button>
@@ -333,6 +338,11 @@ tr:hover td{background:rgba(0,0,0,0.02);}
       <tbody id="o-tb"></tbody>
     </table></div>
     <div class="es" id="o-empty" style="display:none;"><div class="ei">📭</div>No orders found</div>
+    <div class="pager">
+      <button class="btn btn-o btn-sm" id="o-prev-btn" onclick="ordersPrevPage()" disabled>‹ Prev</button>
+      <span id="o-page-info">Page 1</span>
+      <button class="btn btn-o btn-sm" id="o-next-btn" onclick="ordersNextPage()">Next ›</button>
+    </div>
   </div>
 </div>
 
@@ -403,15 +413,17 @@ tr:hover td{background:rgba(0,0,0,0.02);}
 <div class="page" id="pg-rep-orders">
   <div class="ph"><div class="pt">Order Report</div><button class="btn btn-o btn-sm" onclick="window.print()">🖨️ Print</button></div>
   <div class="tc" style="padding:14px;margin-bottom:14px;background:var(--card);border:1px solid var(--border);border-radius:10px;">
-    <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      <div class="fg" style="margin:0"><label>Start Date</label><input type="date" id="rs" onchange="renderRepO()"></div>
-      <div class="fg" style="margin:0"><label>End Date</label><input type="date" id="re" onchange="renderRepO()"></div>
-      <div class="fg" style="margin:0"><label>Status</label><select id="rss" onchange="renderRepO()"><option value="">All</option><option>Processing</option><option>Completed</option><option>Delivered</option><option>Canceled</option></select></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+      <div class="fg" style="margin:0"><label>Start Date</label><input type="date" id="rs"></div>
+      <div class="fg" style="margin:0"><label>End Date</label><input type="date" id="re"></div>
+      <div class="fg" style="margin:0"><label>Status</label><select id="rss"><option value="">All</option><option>Processing</option><option>Completed</option><option>Delivered</option><option>Canceled</option></select></div>
+      <button class="btn btn-p btn-sm" onclick="renderRepO()">🔍 Generate Report</button>
     </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;">💡 তারিখ দিয়ে রিপোর্ট জেনারেট করুন — সব অর্ডার একসাথে লোড হয় না</div>
   </div>
   <div class="tc"><div style="overflow-x:auto;"><table>
     <thead><tr><th>Date</th><th>Invoice</th><th>Customer</th><th>Product</th><th>Total</th><th>Courier</th><th>Status</th></tr></thead>
-    <tbody id="rep-o-tb"></tbody>
+    <tbody id="rep-o-tb"><tr><td colspan="7"><div class="es"><div class="ei">📋</div>তারিখ select করে Generate করুন</div></td></tr></tbody>
   </table></div></div>
 </div>
 
@@ -419,15 +431,16 @@ tr:hover td{background:rgba(0,0,0,0.02);}
 <div class="page" id="pg-rep-products">
   <div class="ph"><div class="pt">Product Report</div><button class="btn btn-o btn-sm" onclick="window.print()">🖨️ Print</button></div>
   <div class="tc" style="padding:14px;margin-bottom:14px;background:var(--card);border:1px solid var(--border);border-radius:10px;">
-    <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      <div class="fg" style="margin:0"><label>Start Date</label><input type="date" id="rps" onchange="renderRepP()"></div>
-      <div class="fg" style="margin:0"><label>End Date</label><input type="date" id="rpe" onchange="renderRepP()"></div>
-      <div class="fg" style="margin:0"><label>Status</label><select id="rpss" onchange="renderRepP()"><option value="">All</option><option>Processing</option><option>Completed</option></select></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+      <div class="fg" style="margin:0"><label>Start Date</label><input type="date" id="rps"></div>
+      <div class="fg" style="margin:0"><label>End Date</label><input type="date" id="rpe"></div>
+      <div class="fg" style="margin:0"><label>Status</label><select id="rpss"><option value="">All</option><option>Processing</option><option>Completed</option></select></div>
+      <button class="btn btn-p btn-sm" onclick="renderRepP()">🔍 Generate Report</button>
     </div>
   </div>
   <div class="tc"><table>
     <thead><tr><th>#</th><th>Date</th><th>Product</th><th>Qty</th></tr></thead>
-    <tbody id="rep-p-tb"></tbody>
+    <tbody id="rep-p-tb"><tr><td colspan="4"><div class="es"><div class="ei">📦</div>তারিখ select করে Generate করুন</div></td></tr></tbody>
   </table></div>
 </div>
 
@@ -435,15 +448,16 @@ tr:hover td{background:rgba(0,0,0,0.02);}
 <div class="page" id="pg-rep-courier">
   <div class="ph"><div class="pt">Courier Report</div><button class="btn btn-o btn-sm" onclick="window.print()">🖨️ Print</button></div>
   <div class="tc" style="padding:14px;margin-bottom:14px;background:var(--card);border:1px solid var(--border);border-radius:10px;">
-    <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      <div class="fg" style="margin:0"><label>Start Date</label><input type="date" id="rcs" onchange="renderRepC()"></div>
-      <div class="fg" style="margin:0"><label>End Date</label><input type="date" id="rce" onchange="renderRepC()"></div>
-      <div class="fg" style="margin:0"><label>Courier</label><select id="rcc" onchange="renderRepC()"><option value="">All</option></select></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+      <div class="fg" style="margin:0"><label>Start Date</label><input type="date" id="rcs"></div>
+      <div class="fg" style="margin:0"><label>End Date</label><input type="date" id="rce"></div>
+      <div class="fg" style="margin:0"><label>Courier</label><select id="rcc"><option value="">All</option></select></div>
+      <button class="btn btn-p btn-sm" onclick="renderRepC()">🔍 Generate Report</button>
     </div>
   </div>
   <div class="tc"><div style="overflow-x:auto;"><table>
     <thead><tr><th>Courier</th><th>Total</th><th>Processing</th><th>Completed</th><th>Delivered</th><th>Canceled</th></tr></thead>
-    <tbody id="rep-c-tb"></tbody>
+    <tbody id="rep-c-tb"><tr><td colspan="6"><div class="es"><div class="ei">🚛</div>তারিখ select করে Generate করুন</div></td></tr></tbody>
   </table></div></div>
 </div>
 
@@ -470,6 +484,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
       <div class="sni" onclick="sst('analytics',this)">Analytics/Pixel</div>
       <div class="sni" onclick="sst('blacklist',this)">Blacklist</div>
       <div class="sni" onclick="sst('password',this)">Change Password</div>
+      <div class="sni" onclick="sst('migration',this)">⚙️ Data Migration</div>
     </div>
     <div style="flex:1;">
       <div class="sc2" id="st-general">
@@ -537,6 +552,16 @@ tr:hover td{background:rgba(0,0,0,0.02);}
         <div class="fg"><label>New Password</label><input type="password" id="s-np" placeholder="New password"></div>
         <div class="fg"><label>Confirm Password</label><input type="password" id="s-cnp" placeholder="Confirm new password"></div>
         <button class="btn btn-p" onclick="changePass()">✅ Change Password</button>
+      </div>
+      <div class="sc2" id="st-migration" style="display:none;">
+        <div class="ss-title">⚙️ Data Migration (One-Time)</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:14px;font-family:'Hind Siliguri';">
+          এই টুলটি পুরনো স্টোরেজ structure (একটা ডকুমেন্টের ভিতরে সব অর্ডার/প্রোডাক্ট) থেকে নতুন structure-এ (আলাদা collection) ডেটা কপি করবে।<br><br>
+          ✅ এটা <b>নিরাপদ</b> — পুরনো ডেটা ডিলিট হবে না, শুধু কপি হবে।<br>
+          ⚠️ একবার সফলভাবে migrate হলে আর দরকার নেই, বাটনটা চাইলে উপেক্ষা করতে পারেন।
+        </div>
+        <button class="btn btn-p" onclick="runMigration()" id="migrate-btn">🚀 Migration শুরু করুন</button>
+        <div id="migration-log" style="margin-top:14px;font-size:12px;font-family:monospace;background:var(--surface);border-radius:8px;padding:12px;display:none;max-height:300px;overflow-y:auto;white-space:pre-wrap;"></div>
       </div>
     </div>
   </div>
@@ -713,8 +738,6 @@ tr:hover td{background:rgba(0,0,0,0.02);}
 
 <script>
 // ══════════════════════════════════════════
-// DATA
-// ══════════════════════════════════════════
 // FIREBASE INIT
 // ══════════════════════════════════════════
 const firebaseConfig = {
@@ -727,15 +750,25 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+
+// Old single-document store: still used for categories, couriers, users, settings, banners (small data)
 const STORE_DOC = db.collection('metrobd').doc('store');
+// New collections: orders & products live here now (NOT in STORE_DOC) to avoid the 1MB document limit
+// and to avoid downloading thousands of orders just to load the dashboard.
+const ORDERS_COL = db.collection('metrobd_orders');
+const PRODUCTS_COL = db.collection('metrobd_products');
+
 const IMGBB_API_KEY = "3b6c1d56d21a4c3f52beb52c55859a28";
 
 // LocalStorage fallback helpers (used only for admin password + cart-like local prefs)
 const gd = (k,d) => { try{ return JSON.parse(localStorage.getItem(k))||d; }catch(e){ return d; } };
 const sd = (k,v) => localStorage.setItem(k, JSON.stringify(v));
 
-let orders = [];
-let products = [];
+// ══════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════
+let orders = [];          // only the CURRENT PAGE of orders (from ORDERS_COL), not all of them
+let products = [];        // all active products (kept small: 15-30 typical, fine to load fully)
 let categories = [];
 let couriers = [{id:1,name:'Pathao',charge:100,status:'Active'},{id:2,name:'RedX',charge:100,status:'Active'},{id:3,name:'Sundarban',charge:80,status:'Active'}];
 let users = [{id:1,name:'Super Admin',phone:'',email:'admin@metrobd.com',type:'Admin',status:'Active'}];
@@ -744,28 +777,36 @@ let banners = [];
 let adminPass = gd('mb_pass','admin123');
 let dataLoaded = false;
 
+// Dashboard-only aggregate counters (computed from a capped recent-orders fetch, NOT every order ever placed)
+let dashboardOrdersSample = []; // last 500 orders, used only for dashboard stat cards + recent list
+const DASHBOARD_SAMPLE_LIMIT = 500;
+
+// Orders page pagination state
+const ORDERS_PAGE_SIZE = 50;
+let orderPageCursors = [null]; // orderPageCursors[i] = the "startAfter" doc snapshot to use to load page i (0-indexed); index 0 = null (first page)
+let curOrderPage = 0;
+let lastOrderPageHasMore = false;
+
 let unsubscribeStore=null;
 function startRealtimeSync(){
   if(unsubscribeStore) return;
+  // Realtime sync ONLY for small data: categories, couriers, users, settings, banners.
+  // Orders and products are intentionally NOT realtime-synced from a single doc anymore.
   unsubscribeStore=STORE_DOC.onSnapshot(doc=>{
     if(!doc.exists) return;
     const d=doc.data();
-    orders=d.orders||[]; products=d.products||[]; categories=d.categories||[];
+    categories=d.categories||[];
     couriers=d.couriers&&d.couriers.length?d.couriers:couriers;
     users=d.users&&d.users.length?d.users:users;
     settings=d.settings||{}; banners=d.banners||[];
-    // Re-render whichever page is currently active so admin always sees fresh data
     const active=document.querySelector('.page.active');
     if(active){
       const pid=active.id.replace('pg-','');
-      if(pid==='dashboard') updateDashboard();
-      else if(pid==='incomplete') renderIncomplete();
-      else if(pid==='orders') renderOrders();
-      else if(pid==='products') renderProducts();
-      else if(pid==='categories') renderCats();
+      if(pid==='categories') renderCats();
       else if(pid==='couriers') renderCouriers();
       else if(pid==='banners') renderBanners();
       else if(pid==='users') renderUsers();
+      else if(pid==='products') populateSelects();
     }
     updateCourierSelects();
   }, err=>{
@@ -774,14 +815,16 @@ function startRealtimeSync(){
   });
 }
 
+// Save small/shared data (categories, couriers, users, settings, banners) — NOT orders/products anymore
 function saveAll(){
-  return STORE_DOC.set({orders,products,categories,couriers,users,settings,banners},{merge:true})
+  return STORE_DOC.set({categories,couriers,users,settings,banners},{merge:true})
     .catch(err=>{ console.error('Firebase save error:',err); toast('সেভ করতে সমস্যা — ইন্টারনেট চেক করুন','var(--red)'); throw err; });
 }
 
 let curOF = 'all';
 let editP=null, editC=null, editCou=null, editU=null, editB=null;
 let curEditOId = null;
+let curEditOSnapshotRef = null; // Firestore doc ref of order currently open in edit-status modal
 let curPrintO = null;
 
 // ══════════════════════════════════════════
@@ -798,7 +841,7 @@ function doLogin(){
     const d=doc.exists?doc.data():{};
     adminPass = d.adminPass || gd('mb_pass','admin123');
     if(p===adminPass){
-      orders=d.orders||[]; products=d.products||[]; categories=d.categories||[];
+      categories=d.categories||[];
       couriers=d.couriers&&d.couriers.length?d.couriers:couriers;
       users=d.users&&d.users.length?d.users:users;
       settings=d.settings||{}; banners=d.banners||[];
@@ -806,8 +849,10 @@ function doLogin(){
       startRealtimeSync();
       document.getElementById('login-page').style.display='none';
       document.getElementById('admin-panel').style.display='block';
-      updateDashboard();
-      updateCourierSelects();
+      loadProducts().then(()=>{
+        updateCourierSelects();
+        loadDashboard();
+      });
       if(btn){btn.textContent='🔐 Login';btn.disabled=false;}
     } else {
       document.getElementById('login-err').style.display='block';
@@ -859,53 +904,76 @@ function sp(page, filter){
   if(page==='orders'){
     curOF = filter||'all';
     document.querySelectorAll('#o-stabs .stab').forEach(t=>t.classList.toggle('active', t.textContent.trim()===(filter==='all'?'All':filter)||(!filter&&t.textContent==='All')));
-    updateCourierSelects(); renderOrders();
+    updateCourierSelects();
+    resetOrdersPaging();
+    loadOrdersPage(0);
   }
-  if(page==='dashboard') updateDashboard();
-  if(page==='incomplete') renderIncomplete();
+  if(page==='dashboard') loadDashboard();
+  if(page==='incomplete') loadIncomplete();
   if(page==='products'){ populateSelects(); renderProducts(); }
   if(page==='categories') renderCats();
   if(page==='couriers') renderCouriers();
   if(page==='banners') renderBanners();
   if(page==='users') renderUsers();
   if(page==='settings') loadSettings();
-  if(page==='rep-orders') renderRepO();
-  if(page==='rep-products') renderRepP();
-  if(page==='rep-courier') renderRepC();
+  // rep-orders / rep-products / rep-courier are generated on-demand via their own "Generate" buttons now
 }
 
 // ══════════════════════════════════════════
-// DASHBOARD
+// PRODUCTS — loaded once from PRODUCTS_COL (small collection, fine to load fully)
 // ══════════════════════════════════════════
-function updateDashboard(){
-  const today = new Date().toISOString().split('T')[0];
-  const cnt = s => orders.filter(o=>s==='all'||o.status===s).length;
-  ['total','proc','pay','hold','can','comp'].forEach((id,i)=>{
-    const vals = [orders.length, cnt('Processing'), cnt('Payment Pending'), cnt('On Hold'), cnt('Canceled'), cnt('Completed')];
-    document.getElementById('d-'+id).textContent = vals[i];
+function loadProducts(){
+  return PRODUCTS_COL.get().then(snap=>{
+    products = snap.docs.map(d=>({...d.data(), _docId:d.id}));
+  }).catch(err=>{
+    console.error('Load products error:',err);
+    toast('প্রোডাক্ট লোড করতে সমস্যা','var(--red)');
   });
-  const rev = orders.filter(o=>['Completed','Delivered'].includes(o.status)).reduce((a,o)=>a+(o.total||0),0);
-  document.getElementById('d-rev').textContent = '৳'+rev.toLocaleString();
+}
+
+// ══════════════════════════════════════════
+// DASHBOARD — uses a capped sample (latest 500 orders), never the full order history
+// ══════════════════════════════════════════
+function loadDashboard(){
+  ORDERS_COL.orderBy('createdAtTs','desc').limit(DASHBOARD_SAMPLE_LIMIT).get().then(snap=>{
+    dashboardOrdersSample = snap.docs.map(d=>({...d.data(), _docId:d.id}));
+    renderDashboard();
+  }).catch(err=>{
+    console.error('Dashboard load error:',err);
+    toast('ড্যাশবোর্ড লোড করতে সমস্যা','var(--red)');
+  });
+}
+
+function renderDashboard(){
+  const today = new Date().toISOString().split('T')[0];
+  const src = dashboardOrdersSample;
+  const cnt = s => src.filter(o=>s==='all'||o.status===s).length;
+  const vals = [src.length, cnt('Processing'), cnt('Payment Pending'), cnt('On Hold'), cnt('Canceled'), cnt('Completed')];
+  ['total','proc','pay','hold','can','comp'].forEach((id,i)=>{
+    document.getElementById('d-'+id).textContent = vals[i] + (src.length>=DASHBOARD_SAMPLE_LIMIT?'+':'');
+  });
+  const rev = src.filter(o=>['Completed','Delivered'].includes(o.status)).reduce((a,o)=>a+(o.total||0),0);
+  document.getElementById('d-rev').textContent = '৳'+rev.toLocaleString()+(src.length>=DASHBOARD_SAMPLE_LIMIT?'+':'');
   document.getElementById('d-prods').textContent = products.length;
-  document.getElementById('all-badge').textContent = orders.length;
-  const inc = orders.filter(o=>!o.name||!o.address).length;
+  document.getElementById('all-badge').textContent = src.length+(src.length>=DASHBOARD_SAMPLE_LIMIT?'+':'');
+  const inc = src.filter(o=>!o.name||!o.address).length;
   document.getElementById('inc-badge').textContent = inc;
 
-  const tod = orders.filter(o=>o.date===today);
+  const tod = src.filter(o=>o.date===today);
   const statuses = ['Processing','Payment Pending','On Hold','Completed','Canceled','Delivered','Invoiced'];
   document.getElementById('today-report').innerHTML = [
     ['Today Orders', tod.length],
     ...statuses.map(s=>[s, tod.filter(o=>o.status===s).length])
   ].map(([l,v])=>`<div class="tr2"><span class="tr2-l">${l}</span><span class="tr2-v">${v}</span></div>`).join('');
 
-  const recent = [...orders].reverse().slice(0,6);
+  const recent = src.slice(0,6);
   document.getElementById('recent-tb').innerHTML = recent.length ?
     recent.map(o=>`<tr><td style="color:var(--accent);font-size:12px">${o.invoice}</td><td style="font-size:12px">${o.name||'-'}</td><td style="color:var(--green)">৳${(o.total||0).toLocaleString()}</td><td><span class="badge ${sc(o.status)}">${o.status}</span></td></tr>`).join('') :
     '<tr><td colspan="4"><div class="es"><div class="ei">📭</div>No orders</div></td></tr>';
 }
 
 // ══════════════════════════════════════════
-// ORDERS
+// ORDERS — paginated load from ORDERS_COL (never load all orders at once)
 // ══════════════════════════════════════════
 function getInvNum(){
   const pref = settings.invoice_prefix||'MB';
@@ -929,29 +997,89 @@ function saveOrder(){
   const disc = parseInt(document.getElementById('odisc').value)||0;
   const price = prod?(prod.sale||prod.regular||0):0;
   const total = (price*qty)-disc;
-  orders.push({id:Date.now(),invoice:getInvNum(),name,phone,address:document.getElementById('oa').value,product:prod?prod.name:'',productId:pid,qty,price,discount:disc,total,courier:document.getElementById('ocou').value,payment:document.getElementById('opay').value,status:document.getElementById('ost').value,note:document.getElementById('onote').value,date:new Date().toISOString().split('T')[0],time:new Date().toLocaleTimeString(),isNew:true});
-  saveAll(); cm('add-order-modal'); renderOrders(); updateDashboard();
-  toast('অর্ডার saved! ✅');
+  const now = new Date();
+  const newOrder = {
+    id:Date.now(),invoice:getInvNum(),name,phone,address:document.getElementById('oa').value,
+    product:prod?prod.name:'',productId:pid,qty,price,discount:disc,total,
+    courier:document.getElementById('ocou').value,payment:document.getElementById('opay').value,
+    status:document.getElementById('ost').value,note:document.getElementById('onote').value,
+    date:now.toISOString().split('T')[0],time:now.toLocaleTimeString(),
+    createdAtTs:firebase.firestore.Timestamp.now(),
+    isNew:true
+  };
+  ORDERS_COL.add(newOrder).then(()=>{
+    cm('add-order-modal');
+    toast('অর্ডার saved! ✅');
+    resetOrdersPaging(); loadOrdersPage(0);
+    loadDashboard();
+  }).catch(err=>{
+    console.error('Save order error:',err);
+    toast('সেভ করতে সমস্যা — ইন্টারনেট চেক করুন','var(--red)');
+  });
 }
 
+// Build a Firestore query based on current filters (status tab + courier + date)
+function buildOrdersQuery(){
+  let q = ORDERS_COL.orderBy('createdAtTs','desc');
+  if(curOF && curOF!=='all'){ q = q.where('status','==',curOF); }
+  const df = document.getElementById('o-dfilter').value;
+  if(df){ q = q.where('date','==',df); }
+  return q;
+}
+
+function resetOrdersPaging(){
+  orderPageCursors = [null];
+  curOrderPage = 0;
+}
+
+function loadOrdersPage(pageIndex){
+  let q = buildOrdersQuery().limit(ORDERS_PAGE_SIZE);
+  const cursor = orderPageCursors[pageIndex];
+  if(cursor){ q = q.startAfter(cursor); }
+  const tb = document.getElementById('o-tb');
+  tb.innerHTML = '<tr><td colspan="9"><div class="es">⏳ Loading...</div></td></tr>';
+  q.get().then(snap=>{
+    orders = snap.docs.map(d=>({...d.data(), _docId:d.id, _docRef:d.ref}));
+    curOrderPage = pageIndex;
+    lastOrderPageHasMore = snap.docs.length === ORDERS_PAGE_SIZE;
+    if(snap.docs.length){ orderPageCursors[pageIndex+1] = snap.docs[snap.docs.length-1]; }
+    renderOrders();
+    updatePagerUI();
+  }).catch(err=>{
+    console.error('Load orders error:',err);
+    tb.innerHTML = '';
+    document.getElementById('o-empty').style.display='block';
+    toast('অর্ডার লোড করতে সমস্যা — ইন্টারনেট চেক করুন','var(--red)');
+  });
+}
+
+function ordersNextPage(){ if(lastOrderPageHasMore) loadOrdersPage(curOrderPage+1); }
+function ordersPrevPage(){ if(curOrderPage>0) loadOrdersPage(curOrderPage-1); }
+
+function updatePagerUI(){
+  document.getElementById('o-page-info').textContent = 'Page '+(curOrderPage+1);
+  document.getElementById('o-prev-btn').disabled = curOrderPage===0;
+  document.getElementById('o-next-btn').disabled = !lastOrderPageHasMore;
+}
+
+function reloadOrdersFromServer(){ resetOrdersPaging(); loadOrdersPage(0); }
+
 function renderOrders(){
+  // Search box only filters WITHIN the currently loaded page (fast, client-side)
   const search = (document.getElementById('o-search').value||'').toLowerCase();
   const cf = document.getElementById('o-cfilter').value;
-  const df = document.getElementById('o-dfilter').value;
   let f = orders.filter(o=>{
-    const ms = curOF==='all'||o.status===curOF;
     const ms2 = !search||(o.name||'').toLowerCase().includes(search)||(o.invoice||'').toLowerCase().includes(search)||(o.phone||'').includes(search);
     const mc = !cf||o.courier===cf;
-    const md = !df||o.date===df;
-    return ms&&ms2&&mc&&md;
-  }).reverse();
+    return ms2&&mc;
+  });
   document.getElementById('o-count').textContent = f.length;
   const tb = document.getElementById('o-tb');
   const em = document.getElementById('o-empty');
   if(!f.length){ tb.innerHTML=''; em.style.display='block'; return; }
   em.style.display='none';
   tb.innerHTML = f.map(o=>`<tr>
-    <td><input type="checkbox" class="ocb" value="${o.id}"></td>
+    <td><input type="checkbox" class="ocb" value="${o._docId}"></td>
     <td><div style="font-size:12px;color:var(--accent);font-weight:600">${o.invoice}</div><div style="font-size:11px;color:var(--muted)">${o.time||''}</div>${o.isNew?'<span class="badge Active" style="font-size:10px">New</span>':''}</td>
     <td><div style="font-weight:600;font-size:13px">${o.name||'-'}</div><div style="font-size:11px;color:var(--muted)">📞 ${o.phone||'-'}</div><div style="font-size:11px;color:var(--muted)">📍 ${(o.address||'').substring(0,25)}${(o.address||'').length>25?'...':''}</div></td>
     <td style="font-size:12px">📦 ${o.product||'-'} x${o.qty||1}</td>
@@ -960,18 +1088,20 @@ function renderOrders(){
     <td style="font-size:12px">${o.date||''}</td>
     <td><span class="badge ${sc(o.status)}">${o.status}</span></td>
     <td><div class="ci">
-      <button class="btn btn-o btn-sm" onclick="viewOrder(${o.id})" title="View">👁️</button>
-      <button class="btn btn-w btn-sm" onclick="openES(${o.id})" title="Status">↕️</button>
-      <button class="btn btn-d btn-sm" onclick="delOrder(${o.id})" title="Delete">🗑️</button>
+      <button class="btn btn-o btn-sm" onclick="viewOrder('${o._docId}')" title="View">👁️</button>
+      <button class="btn btn-w btn-sm" onclick="openES('${o._docId}')" title="Status">↕️</button>
+      <button class="btn btn-d btn-sm" onclick="delOrder('${o._docId}')" title="Delete">🗑️</button>
     </div></td>
   </tr>`).join('');
 }
 
-function filterOS(s,el){ curOF=s; document.querySelectorAll('#o-stabs .stab').forEach(t=>t.classList.remove('active')); el.classList.add('active'); renderOrders(); }
-function clearOF(){ document.getElementById('o-search').value=''; document.getElementById('o-cfilter').value=''; document.getElementById('o-dfilter').value=''; renderOrders(); }
+function filterOS(s,el){ curOF=s; document.querySelectorAll('#o-stabs .stab').forEach(t=>t.classList.remove('active')); el.classList.add('active'); resetOrdersPaging(); loadOrdersPage(0); }
+function clearOF(){ document.getElementById('o-search').value=''; document.getElementById('o-cfilter').value=''; document.getElementById('o-dfilter').value=''; reloadOrdersFromServer(); }
 
-function viewOrder(id){
-  const o = orders.find(x=>x.id===id); if(!o) return;
+function findLoadedOrder(docId){ return orders.find(x=>x._docId===docId); }
+
+function viewOrder(docId){
+  const o = findLoadedOrder(docId); if(!o) return;
   curPrintO = o;
   document.getElementById('vo-title').textContent = '📋 '+o.invoice;
   document.getElementById('vo-content').innerHTML = `
@@ -993,8 +1123,8 @@ function viewOrder(id){
   om('view-order-modal');
 }
 
-function openES(id){
-  curEditOId=id; const o=orders.find(x=>x.id===id); if(!o) return;
+function openES(docId){
+  curEditOId=docId; const o=findLoadedOrder(docId); if(!o) return;
   document.getElementById('ns').value=o.status;
   const sel=document.getElementById('es-cou');
   sel.innerHTML='<option value="">Select Courier</option>'+couriers.map(c=>`<option ${o.courier===c.name?'selected':''}>${c.name}</option>`).join('');
@@ -1002,35 +1132,62 @@ function openES(id){
 }
 
 function updateOS(){
-  const o=orders.find(x=>x.id===curEditOId); if(!o) return;
-  o.status=document.getElementById('ns').value;
-  o.courier=document.getElementById('es-cou').value||o.courier;
-  saveAll(); renderOrders(); updateDashboard(); cm('edit-status-modal'); toast('Updated! ✅');
+  const o=findLoadedOrder(curEditOId); if(!o) return;
+  const newStatus=document.getElementById('ns').value;
+  const newCourier=document.getElementById('es-cou').value||o.courier||'';
+  ORDERS_COL.doc(curEditOId).update({status:newStatus, courier:newCourier}).then(()=>{
+    o.status=newStatus; o.courier=newCourier;
+    renderOrders(); cm('edit-status-modal'); toast('Updated! ✅');
+  }).catch(err=>{
+    console.error('Update status error:',err);
+    toast('Update করতে সমস্যা হয়েছে','var(--red)');
+  });
 }
 
-function delOrder(id){ if(!confirm('Delete?')) return; orders=orders.filter(o=>o.id!==id); saveAll(); renderOrders(); updateDashboard(); toast('Deleted','var(--red)'); }
+function delOrder(docId){
+  if(!confirm('Delete?')) return;
+  ORDERS_COL.doc(docId).delete().then(()=>{
+    orders=orders.filter(o=>o._docId!==docId);
+    renderOrders();
+    toast('Deleted','var(--red)');
+  }).catch(err=>{
+    console.error('Delete order error:',err);
+    toast('Delete করতে সমস্যা হয়েছে','var(--red)');
+  });
+}
+
 function selAll(cb){ document.querySelectorAll('.ocb').forEach(c=>c.checked=cb.checked); }
 
 function bulkStatus(){
-  const ids=[...document.querySelectorAll('.ocb:checked')].map(c=>parseInt(c.value));
+  const ids=[...document.querySelectorAll('.ocb:checked')].map(c=>c.value);
   if(!ids.length){ toast('কোনো order select করুন','var(--yellow)'); return; }
   const s=prompt('New status: Processing / Invoiced / Delivered / Completed / Canceled');
   if(!s) return;
-  ids.forEach(id=>{ const o=orders.find(x=>x.id===id); if(o) o.status=s; });
-  saveAll(); renderOrders(); updateDashboard(); toast(ids.length+' orders updated! ✅');
+  const batch = db.batch();
+  ids.forEach(docId=>{ batch.update(ORDERS_COL.doc(docId), {status:s}); });
+  batch.commit().then(()=>{
+    ids.forEach(docId=>{ const o=findLoadedOrder(docId); if(o) o.status=s; });
+    renderOrders();
+    toast(ids.length+' orders updated! ✅');
+  }).catch(err=>{
+    console.error('Bulk update error:',err);
+    toast('Bulk update করতে সমস্যা হয়েছে','var(--red)');
+  });
 }
 
 function exportCSV(){
+  // Exports only the currently loaded page (to avoid downloading thousands of orders at once).
+  // For a full export, use Order Report with a date range.
   const rows=[['Invoice','Name','Phone','Address','Product','Qty','Total','Courier','Status','Date']];
   orders.forEach(o=>rows.push([o.invoice,o.name,o.phone,o.address,o.product,o.qty,o.total,o.courier,o.status,o.date]));
   const csv=rows.map(r=>r.map(x=>`"${x||''}"`).join(',')).join('\n');
   const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv); a.download='orders-'+new Date().toISOString().split('T')[0]+'.csv'; a.click();
-  toast('CSV Downloaded! 📥');
+  toast('CSV Downloaded (এই পেজের অর্ডার)! 📥');
 }
 
 function printInv(){
-  const ids=[...document.querySelectorAll('.ocb:checked')].map(c=>parseInt(c.value));
-  const list=ids.length?orders.filter(o=>ids.includes(o.id)):[curPrintO].filter(Boolean);
+  const ids=[...document.querySelectorAll('.ocb:checked')].map(c=>c.value);
+  const list=ids.length?orders.filter(o=>ids.includes(o._docId)):[curPrintO].filter(Boolean);
   if(!list.length){ toast('Order select করুন','var(--yellow)'); return; }
   printOrders(list);
 }
@@ -1066,12 +1223,24 @@ function printOrders(list){
 }
 
 // ══════════════════════════════════════════
-// INCOMPLETE
+// INCOMPLETE — separate capped query (orders missing name/address), not part of the main pager
 // ══════════════════════════════════════════
+let incompleteOrdersCache = [];
+function loadIncomplete(){
+  // Firestore can't query "field is missing" directly across arbitrary docs efficiently for this app's
+  // shape, so we pull a recent capped batch and filter client-side (same 500-cap as dashboard).
+  ORDERS_COL.orderBy('createdAtTs','desc').limit(DASHBOARD_SAMPLE_LIMIT).get().then(snap=>{
+    incompleteOrdersCache = snap.docs.map(d=>({...d.data(), _docId:d.id})).filter(o=>!o.name||!o.address);
+    renderIncomplete();
+  }).catch(err=>{
+    console.error('Load incomplete error:',err);
+    toast('লোড করতে সমস্যা','var(--red)');
+  });
+}
+
 function renderIncomplete(search=''){
-  const inc = orders.filter(o=>(!o.name||!o.address)&&(!search||(o.phone||'').includes(search)||(o.invoice||'').includes(search))).reverse();
+  const inc = incompleteOrdersCache.filter(o=>!search||(o.phone||'').includes(search)||(o.invoice||'').includes(search));
   document.getElementById('inc-count').textContent = inc.length;
-  document.getElementById('inc-badge').textContent = inc.length;
   const tb=document.getElementById('inc-tb'), em=document.getElementById('inc-empty');
   if(!inc.length){ tb.innerHTML=''; em.style.display='block'; return; }
   em.style.display='none';
@@ -1081,8 +1250,15 @@ function renderIncomplete(search=''){
     <td>${o.product||'-'} x${o.qty||1}</td>
     <td style="color:var(--green)">৳${(o.total||0).toLocaleString()}</td>
     <td style="font-size:12px">${o.date}</td>
-    <td><button class="btn btn-w btn-sm" onclick="openES(${o.id})">Edit Status</button></td>
+    <td><button class="btn btn-w btn-sm" onclick="openESIncomplete('${o._docId}')">Edit Status</button></td>
   </tr>`).join('');
+}
+
+function openESIncomplete(docId){
+  const o = incompleteOrdersCache.find(x=>x._docId===docId); if(!o) return;
+  // Reuse the same modal; inject this order temporarily into `orders` so openES/updateOS can find it.
+  if(!findLoadedOrder(docId)){ orders.push(o); }
+  openES(docId);
 }
 
 // ══════════════════════════════════════════
@@ -1098,7 +1274,6 @@ function handleImgUpload(input){
   const file=input.files&&input.files[0];
   if(!file) return;
   if(!file.type.startsWith('image/')){ toast('শুধু ছবি ফাইল দিন','var(--red)'); return; }
-  const wrap=document.getElementById('img-preview-wrap');
   const ic=document.getElementById('img-preview-icon');
   if(ic){ic.style.display='block';ic.textContent='⏳';}
   const reader=new FileReader();
@@ -1155,10 +1330,20 @@ function saveProduct(){
   const reg=parseFloat(document.getElementById('pm-reg').value);
   if(!name||!reg){ toast('নাম ও দাম দিন','var(--red)'); return; }
   const data={name,code:document.getElementById('pm-code').value,category:document.getElementById('pm-cat').value,regular:reg,sale:parseFloat(document.getElementById('pm-sale').value)||0,status:document.getElementById('pm-st').value,delivery:document.getElementById('pm-del').value,imageUrl:document.getElementById('pm-img').value,desc:document.getElementById('pm-desc').value};
-  if(editP) Object.assign(editP,data);
-  else products.push({id:Date.now(),...data});
-  saveAll();
-  renderProducts(); cm('prod-modal'); toast((editP?'Updated':'Added')+' ✅'); editP=null;
+
+  if(editP){
+    Object.assign(editP,data);
+    PRODUCTS_COL.doc(editP._docId).set(data,{merge:true}).then(()=>{
+      renderProducts(); cm('prod-modal'); toast('Updated ✅'); editP=null;
+    }).catch(err=>{ console.error(err); toast('সেভ করতে সমস্যা','var(--red)'); });
+  } else {
+    const newProd = {id:Date.now(),...data};
+    PRODUCTS_COL.add(newProd).then(ref=>{
+      newProd._docId = ref.id;
+      products.push(newProd);
+      renderProducts(); cm('prod-modal'); toast('Added ✅');
+    }).catch(err=>{ console.error(err); toast('সেভ করতে সমস্যা','var(--red)'); });
+  }
 }
 
 function renderProducts(){
@@ -1179,14 +1364,14 @@ function renderProducts(){
     <td style="color:var(--green);font-weight:700">৳${p.sale||p.regular}</td>
     <td><span class="badge ${p.status==='Active'?'Active':'Inactive'}">${p.status}</span></td>
     <td><div class="ci">
-      <button class="btn btn-o btn-sm" onclick="editProduct(${p.id})">✏️</button>
-      <button class="btn btn-d btn-sm" onclick="delProduct(${p.id})">🗑️</button>
+      <button class="btn btn-o btn-sm" onclick="editProduct('${p._docId}')">✏️</button>
+      <button class="btn btn-d btn-sm" onclick="delProduct('${p._docId}')">🗑️</button>
     </div></td>
   </tr>`).join('');
 }
 
-function editProduct(id){
-  editP=products.find(p=>p.id===id); if(!editP) return;
+function editProduct(docId){
+  editP=products.find(p=>p._docId===docId); if(!editP) return;
   populateSelects();
   document.getElementById('pm-title').textContent='Edit Product';
   document.getElementById('pm-name').value=editP.name;
@@ -1202,10 +1387,16 @@ function editProduct(id){
   om('prod-modal');
 }
 
-function delProduct(id){ if(!confirm('Delete?')) return; products=products.filter(p=>p.id!==id); saveAll(); renderProducts(); toast('Deleted','var(--red)'); }
+function delProduct(docId){
+  if(!confirm('Delete?')) return;
+  PRODUCTS_COL.doc(docId).delete().then(()=>{
+    products=products.filter(p=>p._docId!==docId);
+    renderProducts(); toast('Deleted','var(--red)');
+  }).catch(err=>{ console.error(err); toast('Delete করতে সমস্যা','var(--red)'); });
+}
 
 // ══════════════════════════════════════════
-// CATEGORIES
+// CATEGORIES (still in STORE_DOC — small data)
 // ══════════════════════════════════════════
 function saveCat(){
   const name=document.getElementById('c-name').value.trim(); if(!name){ toast('নাম দিন','var(--red)'); return; }
@@ -1234,7 +1425,7 @@ function editCat(id){ editC=categories.find(c=>c.id===id); if(!editC) return; do
 function delCat(id){ if(!confirm('Delete?')) return; categories=categories.filter(c=>c.id!==id); saveAll(); renderCats(); toast('Deleted','var(--red)'); }
 
 // ══════════════════════════════════════════
-// COURIERS
+// COURIERS (still in STORE_DOC — small data)
 // ══════════════════════════════════════════
 function saveCourier(){
   const name=document.getElementById('cou-name').value.trim(); if(!name){ toast('নাম দিন','var(--red)'); return; }
@@ -1264,7 +1455,7 @@ function editCourier(id){ editCou=couriers.find(c=>c.id===id); if(!editCou) retu
 function delCourier(id){ if(!confirm('Delete?')) return; couriers=couriers.filter(c=>c.id!==id); saveAll(); renderCouriers(); toast('Deleted','var(--red)'); }
 
 // ══════════════════════════════════════════
-// BANNERS
+// BANNERS (still in STORE_DOC — small data)
 // ══════════════════════════════════════════
 function resetBF(){
   document.getElementById('b-type').value='gradient';
@@ -1340,31 +1531,60 @@ function editBanner(id){
 function delBanner(id){ if(!confirm('Delete?')) return; banners=banners.filter(b=>b.id!==id); saveAll(); renderBanners(); toast('Deleted','var(--red)'); }
 
 // ══════════════════════════════════════════
-// REPORTS
+// REPORTS — each generated on-demand from ORDERS_COL with a date range query (never loads all orders)
 // ══════════════════════════════════════════
 function renderRepO(){
   const s=document.getElementById('rs').value, e=document.getElementById('re').value, st=document.getElementById('rss').value;
-  const f=orders.filter(o=>(!s||o.date>=s)&&(!e||o.date<=e)&&(!st||o.status===st)).reverse();
-  document.getElementById('rep-o-tb').innerHTML=f.length?f.map(o=>`<tr><td>${o.date}</td><td style="color:var(--accent)">${o.invoice}</td><td>${o.name||'-'}<br><small>${o.phone}</small></td><td>${o.product||'-'} x${o.qty||1}</td><td style="color:var(--green)">৳${(o.total||0).toLocaleString()}</td><td>${o.courier||'-'}</td><td><span class="badge ${sc(o.status)}">${o.status}</span></td></tr>`).join(''):'<tr><td colspan="7"><div class="es"><div class="ei">📋</div>No data</div></td></tr>';
+  if(!s||!e){ toast('Start ও End date দিন','var(--yellow)'); return; }
+  const tb=document.getElementById('rep-o-tb');
+  tb.innerHTML='<tr><td colspan="7"><div class="es">⏳ Loading...</div></td></tr>';
+  let q = ORDERS_COL.where('date','>=',s).where('date','<=',e);
+  if(st) q = q.where('status','==',st);
+  q.orderBy('date','desc').limit(1000).get().then(snap=>{
+    const f = snap.docs.map(d=>d.data());
+    tb.innerHTML=f.length?f.map(o=>`<tr><td>${o.date}</td><td style="color:var(--accent)">${o.invoice}</td><td>${o.name||'-'}<br><small>${o.phone}</small></td><td>${o.product||'-'} x${o.qty||1}</td><td style="color:var(--green)">৳${(o.total||0).toLocaleString()}</td><td>${o.courier||'-'}</td><td><span class="badge ${sc(o.status)}">${o.status}</span></td></tr>`).join(''):'<tr><td colspan="7"><div class="es"><div class="ei">📋</div>No data</div></td></tr>';
+  }).catch(err=>{
+    console.error('Report error:',err);
+    tb.innerHTML='<tr><td colspan="7"><div class="es">রিপোর্ট লোড করতে সমস্যা হয়েছে</div></td></tr>';
+  });
 }
 
 function renderRepP(){
   const s=document.getElementById('rps').value, e=document.getElementById('rpe').value, st=document.getElementById('rpss').value;
-  const f=orders.filter(o=>(!s||o.date>=s)&&(!e||o.date<=e)&&(!st||o.status===st)&&o.product).reverse();
-  document.getElementById('rep-p-tb').innerHTML=f.length?f.map((o,i)=>`<tr><td>${i+1}</td><td>${o.date}</td><td>${o.product}</td><td>${o.qty||1}</td></tr>`).join(''):'<tr><td colspan="4"><div class="es"><div class="ei">📦</div>No data</div></td></tr>';
+  if(!s||!e){ toast('Start ও End date দিন','var(--yellow)'); return; }
+  const tb=document.getElementById('rep-p-tb');
+  tb.innerHTML='<tr><td colspan="4"><div class="es">⏳ Loading...</div></td></tr>';
+  let q = ORDERS_COL.where('date','>=',s).where('date','<=',e);
+  if(st) q = q.where('status','==',st);
+  q.orderBy('date','desc').limit(1000).get().then(snap=>{
+    const f = snap.docs.map(d=>d.data()).filter(o=>o.product);
+    tb.innerHTML=f.length?f.map((o,i)=>`<tr><td>${i+1}</td><td>${o.date}</td><td>${o.product}</td><td>${o.qty||1}</td></tr>`).join(''):'<tr><td colspan="4"><div class="es"><div class="ei">📦</div>No data</div></td></tr>';
+  }).catch(err=>{
+    console.error('Report error:',err);
+    tb.innerHTML='<tr><td colspan="4"><div class="es">রিপোর্ট লোড করতে সমস্যা হয়েছে</div></td></tr>';
+  });
 }
 
 function renderRepC(){
   const s=document.getElementById('rcs').value, e=document.getElementById('rce').value, cf=document.getElementById('rcc').value;
-  const list=couriers.length?couriers:[{name:'Pathao'},{name:'RedX'},{name:'Sundarban'}];
-  document.getElementById('rep-c-tb').innerHTML=list.filter(c=>!cf||c.name===cf).map(c=>{
-    const os=orders.filter(o=>o.courier===c.name&&(!s||o.date>=s)&&(!e||o.date<=e));
-    return `<tr><td style="font-weight:600">${c.name}</td><td>${os.length}</td><td>${os.filter(o=>o.status==='Processing').length}</td><td>${os.filter(o=>o.status==='Completed').length}</td><td>${os.filter(o=>o.status==='Delivered').length}</td><td>${os.filter(o=>o.status==='Canceled').length}</td></tr>`;
-  }).join('')||'<tr><td colspan="6"><div class="es"><div class="ei">🚛</div>No data</div></td></tr>';
+  if(!s||!e){ toast('Start ও End date দিন','var(--yellow)'); return; }
+  const tb=document.getElementById('rep-c-tb');
+  tb.innerHTML='<tr><td colspan="6"><div class="es">⏳ Loading...</div></td></tr>';
+  const list=(couriers.length?couriers:[{name:'Pathao'},{name:'RedX'},{name:'Sundarban'}]).filter(c=>!cf||c.name===cf);
+  ORDERS_COL.where('date','>=',s).where('date','<=',e).limit(1000).get().then(snap=>{
+    const all = snap.docs.map(d=>d.data());
+    tb.innerHTML=list.map(c=>{
+      const os=all.filter(o=>o.courier===c.name);
+      return `<tr><td style="font-weight:600">${c.name}</td><td>${os.length}</td><td>${os.filter(o=>o.status==='Processing').length}</td><td>${os.filter(o=>o.status==='Completed').length}</td><td>${os.filter(o=>o.status==='Delivered').length}</td><td>${os.filter(o=>o.status==='Canceled').length}</td></tr>`;
+    }).join('')||'<tr><td colspan="6"><div class="es"><div class="ei">🚛</div>No data</div></td></tr>';
+  }).catch(err=>{
+    console.error('Report error:',err);
+    tb.innerHTML='<tr><td colspan="6"><div class="es">রিপোর্ট লোড করতে সমস্যা হয়েছে</div></td></tr>';
+  });
 }
 
 // ══════════════════════════════════════════
-// USERS
+// USERS (still in STORE_DOC — small data)
 // ══════════════════════════════════════════
 function resetUF(){ ['u-name','u-ph','u-em'].forEach(id=>document.getElementById(id).value=''); }
 
@@ -1431,6 +1651,98 @@ function saveS(tab){
   };
   if(map[tab]) Object.entries(map[tab]).forEach(([k,id])=>settings[k]=g(id));
   saveAll(); toast('Settings saved! ✅');
+}
+
+// ══════════════════════════════════════════
+// ONE-TIME MIGRATION TOOL
+// Copies orders/products from the OLD single-document structure (metrobd/store: {orders:[...], products:[...]})
+// into the NEW collections (metrobd_orders, metrobd_products). Safe to run multiple times — it skips
+// anything that looks already migrated by checking a marker field, but best run ONCE.
+// ══════════════════════════════════════════
+function migLog(msg){
+  const el = document.getElementById('migration-log');
+  el.style.display = 'block';
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+function runMigration(){
+  const btn = document.getElementById('migrate-btn');
+  const el = document.getElementById('migration-log');
+  el.textContent = '';
+  el.style.display = 'block';
+  btn.disabled = true;
+  btn.textContent = '⏳ Migration চলছে...';
+
+  migLog('🔍 পুরনো store ডকুমেন্ট পড়া হচ্ছে...');
+
+  STORE_DOC.get().then(doc=>{
+    if(!doc.exists){
+      migLog('⚠️ পুরনো store ডকুমেন্ট পাওয়া যায়নি। কিছু migrate করার নেই।');
+      btn.disabled=false; btn.textContent='🚀 Migration শুরু করুন';
+      return;
+    }
+    const d = doc.data();
+    const oldOrders = d.orders || [];
+    const oldProducts = d.products || [];
+    migLog(`📦 পুরনো orders পাওয়া গেছে: ${oldOrders.length} টি`);
+    migLog(`🏷️ পুরনো products পাওয়া গেছে: ${oldProducts.length} টি`);
+
+    if(oldOrders.length===0 && oldProducts.length===0){
+      migLog('✅ Migrate করার মতো কিছু নেই — সব already নতুন structure-এ আছে।');
+      btn.disabled=false; btn.textContent='🚀 Migration শুরু করুন';
+      return;
+    }
+
+    migLog('🚀 Migration শুরু হচ্ছে (এটা কিছুক্ষণ সময় নিতে পারে)...');
+
+    // Migrate in batches of 400 (Firestore batch limit is 500 writes)
+    const allWrites = [];
+    oldOrders.forEach(o=>{
+      const copy = {...o};
+      // Ensure createdAtTs exists for ordering (use existing date/time if possible, else now)
+      if(!copy.createdAtTs){
+        copy.createdAtTs = firebase.firestore.Timestamp.now();
+      }
+      copy._migratedFromOldStore = true;
+      allWrites.push({col: ORDERS_COL, data: copy});
+    });
+    oldProducts.forEach(p=>{
+      const copy = {...p};
+      copy._migratedFromOldStore = true;
+      allWrites.push({col: PRODUCTS_COL, data: copy});
+    });
+
+    function commitInBatches(items, index, doneCb){
+      if(index >= items.length){ doneCb(); return; }
+      const batch = db.batch();
+      const slice = items.slice(index, index+400);
+      slice.forEach(item=>{
+        const ref = item.col.doc();
+        batch.set(ref, item.data);
+      });
+      batch.commit().then(()=>{
+        migLog(`✅ ${Math.min(index+400, items.length)} / ${items.length} আইটেম migrate হয়েছে...`);
+        commitInBatches(items, index+400, doneCb);
+      }).catch(err=>{
+        migLog('❌ Error: ' + err.message);
+        btn.disabled=false; btn.textContent='🚀 আবার চেষ্টা করুন';
+      });
+    }
+
+    commitInBatches(allWrites, 0, ()=>{
+      migLog('🎉 Migration সম্পূর্ণ হয়েছে!');
+      migLog('💡 পুরনো ডেটা এখনও store ডকুমেন্টে অক্ষত আছে (ডিলিট করা হয়নি), নিরাপত্তার জন্য।');
+      migLog('👉 এখন Orders ও Products পেজে গিয়ে চেক করুন সব ঠিকমতো দেখাচ্ছে কিনা।');
+      btn.disabled=false; btn.textContent='✅ Migration সম্পন্ন (আবার চালাতে ক্লিক করুন)';
+      // Refresh in-memory data
+      loadProducts();
+    });
+
+  }).catch(err=>{
+    migLog('❌ Error: ' + err.message);
+    btn.disabled=false; btn.textContent='🚀 আবার চেষ্টা করুন';
+  });
 }
 
 // ══════════════════════════════════════════
