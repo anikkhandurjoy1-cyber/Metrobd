@@ -956,8 +956,13 @@ function renderDashboard(){
   document.getElementById('d-rev').textContent = '৳'+rev.toLocaleString()+(src.length>=DASHBOARD_SAMPLE_LIMIT?'+':'');
   document.getElementById('d-prods').textContent = products.length;
   document.getElementById('all-badge').textContent = src.length+(src.length>=DASHBOARD_SAMPLE_LIMIT?'+':'');
-  const inc = src.filter(o=>!o.name||!o.address).length;
-  document.getElementById('inc-badge').textContent = inc;
+  const inc = src.filter(o=>o.status==='Incomplete').length;
+  document.getElementById('inc-badge').textContent = inc + (src.length>=DASHBOARD_SAMPLE_LIMIT?'+':'');
+  // The 500-order sample above might miss older incomplete drafts, so also fetch the real
+  // incomplete count directly (cheap query — Incomplete orders are usually a small set).
+  ORDERS_COL.where('status','==','Incomplete').limit(200).get().then(snap=>{
+    document.getElementById('inc-badge').textContent = snap.docs.length + (snap.docs.length>=200?'+':'');
+  }).catch(()=>{});
 
   const tod = src.filter(o=>o.date===today);
   const statuses = ['Processing','Payment Pending','On Hold','Completed','Canceled','Delivered','Invoiced'];
@@ -1137,7 +1142,13 @@ function updateOS(){
   const newCourier=document.getElementById('es-cou').value||o.courier||'';
   ORDERS_COL.doc(curEditOId).update({status:newStatus, courier:newCourier}).then(()=>{
     o.status=newStatus; o.courier=newCourier;
-    renderOrders(); cm('edit-status-modal'); toast('Updated! ✅');
+    // If this order is no longer "Incomplete", drop it from the incomplete cache too.
+    if(newStatus!=='Incomplete'){ incompleteOrdersCache=incompleteOrdersCache.filter(x=>x._docId!==curEditOId); }
+    const active=document.querySelector('.page.active');
+    const pid = active ? active.id.replace('pg-','') : '';
+    if(pid==='incomplete') renderIncomplete();
+    else renderOrders();
+    cm('edit-status-modal'); toast('Updated! ✅');
   }).catch(err=>{
     console.error('Update status error:',err);
     toast('Update করতে সমস্যা হয়েছে','var(--red)');
@@ -1148,7 +1159,11 @@ function delOrder(docId){
   if(!confirm('Delete?')) return;
   ORDERS_COL.doc(docId).delete().then(()=>{
     orders=orders.filter(o=>o._docId!==docId);
-    renderOrders();
+    incompleteOrdersCache=incompleteOrdersCache.filter(o=>o._docId!==docId);
+    const active=document.querySelector('.page.active');
+    const pid = active ? active.id.replace('pg-','') : '';
+    if(pid==='incomplete') renderIncomplete();
+    else renderOrders();
     toast('Deleted','var(--red)');
   }).catch(err=>{
     console.error('Delete order error:',err);
@@ -1223,14 +1238,14 @@ function printOrders(list){
 }
 
 // ══════════════════════════════════════════
-// INCOMPLETE — separate capped query (orders missing name/address), not part of the main pager
+// INCOMPLETE — orders with status 'Incomplete' (draft orders saved while a visitor was
+// filling the form on the customer site but never finished/submitted it). Queried directly
+// by status, so this stays fast even as the total order count grows.
 // ══════════════════════════════════════════
 let incompleteOrdersCache = [];
 function loadIncomplete(){
-  // Firestore can't query "field is missing" directly across arbitrary docs efficiently for this app's
-  // shape, so we pull a recent capped batch and filter client-side (same 500-cap as dashboard).
-  ORDERS_COL.orderBy('createdAtTs','desc').limit(DASHBOARD_SAMPLE_LIMIT).get().then(snap=>{
-    incompleteOrdersCache = snap.docs.map(d=>({...d.data(), _docId:d.id})).filter(o=>!o.name||!o.address);
+  ORDERS_COL.where('status','==','Incomplete').orderBy('createdAtTs','desc').limit(200).get().then(snap=>{
+    incompleteOrdersCache = snap.docs.map(d=>({...d.data(), _docId:d.id}));
     renderIncomplete();
   }).catch(err=>{
     console.error('Load incomplete error:',err);
@@ -1246,11 +1261,14 @@ function renderIncomplete(search=''){
   em.style.display='none';
   tb.innerHTML=inc.map(o=>`<tr>
     <td style="color:var(--accent)">${o.invoice}</td>
-    <td>${o.name||'<span style="color:var(--red)">Missing</span>'}<br><small>${o.phone||'-'}</small></td>
+    <td>${(o.name&&o.name!=='(নাম নেই)')?o.name:'<span style="color:var(--red)">নাম দেওয়া হয়নি</span>'}<br><small>${o.phone||'<span style="color:var(--red)">ফোন নেই</span>'}</small></td>
     <td>${o.product||'-'} x${o.qty||1}</td>
     <td style="color:var(--green)">৳${(o.total||0).toLocaleString()}</td>
     <td style="font-size:12px">${o.date}</td>
-    <td><button class="btn btn-w btn-sm" onclick="openESIncomplete('${o._docId}')">Edit Status</button></td>
+    <td><div class="ci">
+      <button class="btn btn-w btn-sm" onclick="openESIncomplete('${o._docId}')">Edit Status</button>
+      <button class="btn btn-d btn-sm" onclick="delOrder('${o._docId}')" title="Delete">🗑️</button>
+    </div></td>
   </tr>`).join('');
 }
 
@@ -1704,6 +1722,20 @@ function runMigration(){
       if(!copy.createdAtTs){
         copy.createdAtTs = firebase.firestore.Timestamp.now();
       }
+      // Firestore security rules require a `createdAt` field on every order document
+      // (separate from the `createdAtTs` field used for sorting). Old orders never had
+      // this field, so without adding it here the write gets rejected with a
+      // "Missing or insufficient permissions" error.
+      if(!copy.createdAt){
+        copy.createdAt = copy.date ? (copy.date+' '+(copy.time||'')) : new Date().toISOString();
+      }
+      // Make sure required fields also satisfy the rule's type/size checks even if
+      // an old order was missing some of them (e.g. incomplete orders).
+      if(typeof copy.name !== 'string' || !copy.name) copy.name = '(নাম নেই)';
+      if(typeof copy.phone !== 'string' || !copy.phone) copy.phone = '-';
+      if(typeof copy.address !== 'string' || !copy.address) copy.address = '-';
+      if(typeof copy.total !== 'number') copy.total = parseFloat(copy.total)||0;
+      if(!copy.status) copy.status = 'Processing';
       copy._migratedFromOldStore = true;
       allWrites.push({col: ORDERS_COL, data: copy});
     });
