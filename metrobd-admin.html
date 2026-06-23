@@ -1024,11 +1024,26 @@ function saveOrder(){
 }
 
 // Build a Firestore query based on current filters (status tab + courier + date)
+// Builds the Firestore query for the Orders page. IMPORTANT: Firestore requires a composite
+// index whenever you combine a `where` filter on one field with `orderBy` on a different field.
+// To avoid needing to manually create indexes for every filter combination, we only use
+// `orderBy('createdAtTs')` when there's NO status/date filter active (the "All" tab — this uses
+// Firestore's automatic single-field index, no setup needed). When a status or date filter IS
+// active, we skip orderBy in the query and sort the (small, already-filtered) result client-side
+// instead — see loadOrdersPage().
 function buildOrdersQuery(){
-  let q = ORDERS_COL.orderBy('createdAtTs','desc');
-  if(curOF && curOF!=='all'){ q = q.where('status','==',curOF); }
   const df = document.getElementById('o-dfilter').value;
+  const hasFilter = (curOF && curOF!=='all') || df;
+  let q = ORDERS_COL;
+  if(curOF && curOF!=='all'){ q = q.where('status','==',curOF); }
   if(df){ q = q.where('date','==',df); }
+  if(!hasFilter){
+    q = q.orderBy('createdAtTs','desc');
+  } else {
+    // Order by document ID for a stable pagination cursor without needing a composite index.
+    // We re-sort by createdAtTs client-side after fetching (see loadOrdersPage).
+    q = q.orderBy(firebase.firestore.FieldPath.documentId());
+  }
   return q;
 }
 
@@ -1045,6 +1060,17 @@ function loadOrdersPage(pageIndex){
   tb.innerHTML = '<tr><td colspan="9"><div class="es">⏳ Loading...</div></td></tr>';
   q.get().then(snap=>{
     orders = snap.docs.map(d=>({...d.data(), _docId:d.id, _docRef:d.ref}));
+    // When a status/date filter is active we ordered by document ID (to avoid needing a
+    // composite index), so re-sort the small filtered batch by date here on the client.
+    const df = document.getElementById('o-dfilter').value;
+    const hasFilter = (curOF && curOF!=='all') || df;
+    if(hasFilter){
+      orders.sort((a,b)=>{
+        const at = a.createdAtTs && a.createdAtTs.toMillis ? a.createdAtTs.toMillis() : 0;
+        const bt = b.createdAtTs && b.createdAtTs.toMillis ? b.createdAtTs.toMillis() : 0;
+        return bt-at;
+      });
+    }
     curOrderPage = pageIndex;
     lastOrderPageHasMore = snap.docs.length === ORDERS_PAGE_SIZE;
     if(snap.docs.length){ orderPageCursors[pageIndex+1] = snap.docs[snap.docs.length-1]; }
@@ -1244,8 +1270,15 @@ function printOrders(list){
 // ══════════════════════════════════════════
 let incompleteOrdersCache = [];
 function loadIncomplete(){
-  ORDERS_COL.where('status','==','Incomplete').orderBy('createdAtTs','desc').limit(200).get().then(snap=>{
+  // No orderBy here (avoids needing a composite index for status+createdAtTs) — Incomplete
+  // orders are typically a small set, so we sort the small result client-side instead.
+  ORDERS_COL.where('status','==','Incomplete').limit(200).get().then(snap=>{
     incompleteOrdersCache = snap.docs.map(d=>({...d.data(), _docId:d.id}));
+    incompleteOrdersCache.sort((a,b)=>{
+      const at = a.createdAtTs && a.createdAtTs.toMillis ? a.createdAtTs.toMillis() : 0;
+      const bt = b.createdAtTs && b.createdAtTs.toMillis ? b.createdAtTs.toMillis() : 0;
+      return bt-at;
+    });
     renderIncomplete();
   }).catch(err=>{
     console.error('Load incomplete error:',err);
@@ -1558,8 +1591,13 @@ function renderRepO(){
   tb.innerHTML='<tr><td colspan="7"><div class="es">⏳ Loading...</div></td></tr>';
   let q = ORDERS_COL.where('date','>=',s).where('date','<=',e);
   if(st) q = q.where('status','==',st);
-  q.orderBy('date','desc').limit(1000).get().then(snap=>{
+  // Only add orderBy('date') when there's no extra status filter — combining a range filter
+  // on `date` with an equality filter on `status` AND an orderBy needs a composite index.
+  // With just the date range + orderBy on that same field, Firestore needs no special index.
+  if(!st) q = q.orderBy('date','desc');
+  q.limit(1000).get().then(snap=>{
     const f = snap.docs.map(d=>d.data());
+    if(st) f.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     tb.innerHTML=f.length?f.map(o=>`<tr><td>${o.date}</td><td style="color:var(--accent)">${o.invoice}</td><td>${o.name||'-'}<br><small>${o.phone}</small></td><td>${o.product||'-'} x${o.qty||1}</td><td style="color:var(--green)">৳${(o.total||0).toLocaleString()}</td><td>${o.courier||'-'}</td><td><span class="badge ${sc(o.status)}">${o.status}</span></td></tr>`).join(''):'<tr><td colspan="7"><div class="es"><div class="ei">📋</div>No data</div></td></tr>';
   }).catch(err=>{
     console.error('Report error:',err);
@@ -1574,8 +1612,10 @@ function renderRepP(){
   tb.innerHTML='<tr><td colspan="4"><div class="es">⏳ Loading...</div></td></tr>';
   let q = ORDERS_COL.where('date','>=',s).where('date','<=',e);
   if(st) q = q.where('status','==',st);
-  q.orderBy('date','desc').limit(1000).get().then(snap=>{
-    const f = snap.docs.map(d=>d.data()).filter(o=>o.product);
+  if(!st) q = q.orderBy('date','desc');
+  q.limit(1000).get().then(snap=>{
+    let f = snap.docs.map(d=>d.data()).filter(o=>o.product);
+    if(st) f.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     tb.innerHTML=f.length?f.map((o,i)=>`<tr><td>${i+1}</td><td>${o.date}</td><td>${o.product}</td><td>${o.qty||1}</td></tr>`).join(''):'<tr><td colspan="4"><div class="es"><div class="ei">📦</div>No data</div></td></tr>';
   }).catch(err=>{
     console.error('Report error:',err);
