@@ -584,7 +584,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
       <div class="fg"><label>Product</label><select id="oprod"><option value="">Select Product</option></select></div>
       <div class="fg"><label>Quantity</label><input type="number" id="oq" value="1" min="1"></div>
       <div class="fg"><label>Courier</label><select id="ocou"><option value="">Select Courier</option></select></div>
-      <div class="fg"><label>Payment</label><select id="opay"><option>Cash On Delivery</option><option>bKash</option><option>Nagad</option><option>Rocket</option></select></div>
+      <div class="fg"><label>Payment</label><select id="opay"><option>Cash On Delivery</option></select></div>
       <div class="fg"><label>Status</label><select id="ost"><option>Processing</option><option>Payment Pending</option><option>On Hold</option><option>Invoiced</option><option>Delivered</option><option>Completed</option><option>Canceled</option></select></div>
       <div class="fg"><label>Discount (৳)</label><input type="number" id="odisc" value="0"></div>
       <div class="fg"><label>Note</label><input type="text" id="onote" placeholder="Optional"></div>
@@ -628,7 +628,11 @@ tr:hover td{background:rgba(0,0,0,0.02);}
     <button class="mc" onclick="cm('prod-modal')">✕</button>
     <div class="md-title" id="pm-title">Add Product</div>
     <div class="fg-2">
-      <div class="fg" style="grid-column:1/-1"><label>Product Name *</label><input type="text" id="pm-name" placeholder="Product name"></div>
+      <div class="fg" style="grid-column:1/-1"><label>Product Name *</label><input type="text" id="pm-name" placeholder="Product name" oninput="autoSlug()"></div>
+      <div class="fg" style="grid-column:1/-1">
+        <label>Product Slug <span style="color:var(--muted);font-size:11px;">(URL-এ দেখাবে, যেমন: wireless-earbuds-pro)</span></label>
+        <input type="text" id="pm-slug" placeholder="otomatic generate hobe, chaile change korte paren">
+      </div>
       <div class="fg"><label>Product Code</label><input type="text" id="pm-code" placeholder="Code"></div>
       <div class="fg"><label>Category</label><select id="pm-cat"><option value="">Select Category</option></select></div>
       <div class="fg"><label>Regular Price (৳) *</label><input type="number" id="pm-reg" placeholder="0"></div>
@@ -636,14 +640,8 @@ tr:hover td{background:rgba(0,0,0,0.02);}
       <div class="fg"><label>Status</label><select id="pm-st"><option>Active</option><option>Inactive</option></select></div>
       <div class="fg"><label>Free Delivery</label><select id="pm-del"><option>Yes</option><option>No</option></select></div>
       <div class="fg" style="grid-column:1/-1">
-        <label>Product Image <span style="color:var(--muted);font-size:11px;">(ফোন থেকে ছবি বাছুন)</span></label>
-        <input type="file" id="pm-img-file" accept="image/*" onchange="handleImgUpload(this)" style="display:none;">
-        <button type="button" class="btn btn-o" style="width:100%;justify-content:center;" onclick="document.getElementById('pm-img-file').click()">📁 Browse Image</button>
-        <input type="hidden" id="pm-img">
-        <div style="margin-top:8px;width:90px;height:90px;border-radius:8px;overflow:hidden;background:var(--surface);display:flex;align-items:center;justify-content:center;border:1px solid var(--border);" id="img-preview-wrap">
-          <img id="img-preview" style="width:100%;height:100%;object-fit:cover;display:none;" alt="">
-          <span id="img-preview-icon" style="font-size:28px;">🖼️</span>
-        </div>
+        <label>Product Images <span style="color:var(--muted);font-size:11px;">(সর্বোচ্চ ৫টা ছবি — প্রথমটা Main Image হিসেবে দেখাবে)</span></label>
+        <div id="pm-img-slots" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;"></div>
         <div style="margin-top:6px;font-size:11px;color:var(--muted);">💡 ছবি ছোট সাইজের (১MB-এর কম) দিলে ভালো কাজ করবে</div>
       </div>
       <div class="fg" style="grid-column:1/-1"><label>Description</label><textarea id="pm-desc" placeholder="Product description..."></textarea></div>
@@ -705,8 +703,12 @@ tr:hover td{background:rgba(0,0,0,0.02);}
       </div>
     </div>
     <div id="b-image-wrap" style="display:none;">
-      <div class="fg"><label>Image URL</label><input type="text" id="b-img" placeholder="https://example.com/banner.jpg" oninput="previewBanner(this.value)"></div>
-      <div class="banner-preview" id="b-preview"><span style="font-size:28px;color:var(--muted);">🖼️</span></div>
+      <label>Banner Image <span style="color:var(--muted);font-size:11px;">(ফোন থেকে ছবি বাছুন)</span></label>
+      <input type="file" id="b-img-file" accept="image/*" onchange="handleBannerImgUpload(this)" style="display:none;">
+      <button type="button" class="btn btn-o" style="width:100%;justify-content:center;margin-top:4px;" onclick="document.getElementById('b-img-file').click()">📁 Browse Image</button>
+      <input type="hidden" id="b-img">
+      <div class="banner-preview" id="b-preview" style="margin-top:8px;"><span style="font-size:28px;color:var(--muted);">🖼️</span></div>
+      <div style="margin-top:6px;margin-bottom:10px;font-size:11px;color:var(--muted);">💡 প্রস্থ:উচ্চতা প্রায় 16:9 অনুপাতের ছবি দিলে ভালো দেখাবে</div>
     </div>
     <div id="b-video-wrap" style="display:none;">
       <div class="fg"><label>Video URL (YouTube)</label><input type="text" id="b-vid" placeholder="https://youtube.com/watch?v=..."></div>
@@ -1315,18 +1317,39 @@ function openESIncomplete(docId){
 // ══════════════════════════════════════════
 // PRODUCTS
 // ══════════════════════════════════════════
-function previewImg(dataUrl){
-  const img=document.getElementById('img-preview'), ic=document.getElementById('img-preview-icon');
-  if(dataUrl){ img.src=dataUrl; img.style.display='block'; ic.style.display='none'; }
-  else { img.style.display='none'; ic.style.display='block'; }
+const MAX_PRODUCT_IMAGES = 5;
+let pmImages = []; // array of image URLs for the product currently being added/edited (index 0 = main image)
+
+function renderImgSlots(){
+  const wrap = document.getElementById('pm-img-slots');
+  let html = '';
+  for(let i=0;i<MAX_PRODUCT_IMAGES;i++){
+    const url = pmImages[i];
+    html += `<div style="width:90px;height:90px;border-radius:8px;overflow:hidden;background:var(--surface);display:flex;align-items:center;justify-content:center;border:1px solid var(--border);position:relative;" id="img-slot-${i}">`;
+    if(url){
+      html += `<img src="${url}" style="width:100%;height:100%;object-fit:cover;" alt="">
+        <button type="button" onclick="removeProductImage(${i})" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.6);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer;line-height:1;">✕</button>
+        ${i===0?'<span style="position:absolute;bottom:2px;left:2px;background:var(--primary);color:#fff;font-size:9px;padding:1px 5px;border-radius:4px;">Main</span>':''}`;
+    } else {
+      html += `<span style="font-size:24px;cursor:pointer;color:var(--muted);" onclick="document.getElementById('pm-img-file-${i}').click()">+</span>
+        <input type="file" id="pm-img-file-${i}" accept="image/*" onchange="handleImgUpload(this,${i})" style="display:none;">`;
+    }
+    html += `</div>`;
+  }
+  wrap.innerHTML = html;
 }
 
-function handleImgUpload(input){
+function removeProductImage(idx){
+  pmImages.splice(idx,1);
+  renderImgSlots();
+}
+
+function handleImgUpload(input,slotIdx){
   const file=input.files&&input.files[0];
   if(!file) return;
   if(!file.type.startsWith('image/')){ toast('শুধু ছবি ফাইল দিন','var(--red)'); return; }
-  const ic=document.getElementById('img-preview-icon');
-  if(ic){ic.style.display='block';ic.textContent='⏳';}
+  const slotEl = document.getElementById('img-slot-'+slotIdx);
+  if(slotEl) slotEl.innerHTML = '<span style="font-size:20px;">⏳</span>';
   const reader=new FileReader();
   reader.onload=function(e){
     const img=new Image();
@@ -1348,16 +1371,15 @@ function handleImgUpload(input){
           .then(res=>res.json())
           .then(data=>{
             if(data.success){
-              const url=data.data.url;
-              document.getElementById('pm-img').value=url;
-              previewImg(url);
+              pmImages[slotIdx] = data.data.url;
+              renderImgSlots();
               toast('ছবি আপলোড হয়েছে ✅');
             } else {
               throw new Error('Upload failed');
             }
           }).catch(err=>{
             console.error(err);
-            if(ic){ic.style.display='block';ic.textContent='🖼️';}
+            renderImgSlots();
             toast('ছবি আপলোড করতে সমস্যা হয়েছে','var(--red)');
           });
       },'image/jpeg',0.8);
@@ -1367,12 +1389,53 @@ function handleImgUpload(input){
   reader.readAsDataURL(file);
 }
 
+// ── Slug helpers ──
+function slugify(text){
+  return (text||'').toString().toLowerCase().trim()
+    .replace(/[^\w\s-]/g,'')   // remove non-word chars (keeps Bangla letters as \w doesn't match them, so this mainly strips punctuation)
+    .replace(/\s+/g,'-')
+    .replace(/-+/g,'-')
+    .replace(/^-|-$/g,'');
+}
+
+let slugManuallyEdited = false;
+function autoSlug(){
+  if(slugManuallyEdited) return; // don't override if admin already typed a custom slug
+  const name = document.getElementById('pm-name').value;
+  document.getElementById('pm-slug').value = slugify(name);
+}
+document.addEventListener('DOMContentLoaded', ()=>{
+  const slugInput = document.getElementById('pm-slug');
+  if(slugInput) slugInput.addEventListener('input', ()=>{ slugManuallyEdited = true; });
+});
+// In case DOMContentLoaded already fired before this script ran (it's at the bottom of body, so
+// it's safe either way, but this guards against load-order edge cases):
+(function(){
+  const slugInput = document.getElementById('pm-slug');
+  if(slugInput && !slugInput._listenerBound){
+    slugInput.addEventListener('input', ()=>{ slugManuallyEdited = true; });
+    slugInput._listenerBound = true;
+  }
+})();
+
+function ensureUniqueSlug(baseSlug, excludeDocId){
+  let slug = baseSlug || ('product-'+Date.now());
+  let n = 1;
+  while(products.some(p=>p.slug===slug && p._docId!==excludeDocId)){
+    n++;
+    slug = baseSlug+'-'+n;
+  }
+  return slug;
+}
+
 function resetPF(){
-  ['pm-name','pm-code','pm-img','pm-desc'].forEach(id=>document.getElementById(id).value='');
+  ['pm-name','pm-code','pm-slug','pm-desc'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('pm-reg').value=''; document.getElementById('pm-sale').value='';
   document.getElementById('pm-st').value='Active'; document.getElementById('pm-del').value='Yes';
-  const fileInput=document.getElementById('pm-img-file'); if(fileInput) fileInput.value='';
-  previewImg(''); populateSelects();
+  pmImages = [];
+  slugManuallyEdited = false;
+  renderImgSlots();
+  populateSelects();
   document.getElementById('pm-title').textContent='Add Product';
 }
 
@@ -1380,7 +1443,20 @@ function saveProduct(){
   const name=document.getElementById('pm-name').value.trim();
   const reg=parseFloat(document.getElementById('pm-reg').value);
   if(!name||!reg){ toast('নাম ও দাম দিন','var(--red)'); return; }
-  const data={name,code:document.getElementById('pm-code').value,category:document.getElementById('pm-cat').value,regular:reg,sale:parseFloat(document.getElementById('pm-sale').value)||0,status:document.getElementById('pm-st').value,delivery:document.getElementById('pm-del').value,imageUrl:document.getElementById('pm-img').value,desc:document.getElementById('pm-desc').value};
+  const rawSlug = slugify(document.getElementById('pm-slug').value || name);
+  const slug = ensureUniqueSlug(rawSlug, editP?editP._docId:null);
+  const images = pmImages.filter(Boolean); // drop empty slots
+  const data={
+    name, slug,
+    code:document.getElementById('pm-code').value,
+    category:document.getElementById('pm-cat').value,
+    regular:reg, sale:parseFloat(document.getElementById('pm-sale').value)||0,
+    status:document.getElementById('pm-st').value,
+    delivery:document.getElementById('pm-del').value,
+    images,
+    imageUrl: images[0] || '', // kept for backward compatibility with older code paths
+    desc:document.getElementById('pm-desc').value
+  };
 
   if(editP){
     Object.assign(editP,data);
@@ -1426,15 +1502,18 @@ function editProduct(docId){
   populateSelects();
   document.getElementById('pm-title').textContent='Edit Product';
   document.getElementById('pm-name').value=editP.name;
+  document.getElementById('pm-slug').value=editP.slug||slugify(editP.name);
+  slugManuallyEdited = true; // don't auto-overwrite the slug while editing an existing product
   document.getElementById('pm-code').value=editP.code||'';
   document.getElementById('pm-cat').value=editP.category||'';
   document.getElementById('pm-reg').value=editP.regular||'';
   document.getElementById('pm-sale').value=editP.sale||'';
   document.getElementById('pm-st').value=editP.status||'Active';
   document.getElementById('pm-del').value=editP.delivery||'Yes';
-  document.getElementById('pm-img').value=editP.imageUrl||'';
   document.getElementById('pm-desc').value=editP.desc||'';
-  previewImg(editP.imageUrl||'');
+  // Support both old products (single imageUrl) and new ones (images array)
+  pmImages = (editP.images && editP.images.length) ? [...editP.images] : (editP.imageUrl ? [editP.imageUrl] : []);
+  renderImgSlots();
   om('prod-modal');
 }
 
@@ -1515,6 +1594,7 @@ function resetBF(){
   document.getElementById('b-img').value='';
   document.getElementById('b-vid').value='';
   document.getElementById('b-st').value='Active';
+  const bFileInput=document.getElementById('b-img-file'); if(bFileInput) bFileInput.value='';
   toggleBannerType('gradient');
   document.getElementById('bm-title').textContent='Add Banner';
   document.getElementById('b-preview').innerHTML='<span style="font-size:28px;color:var(--muted);">🖼️</span>';
@@ -1530,6 +1610,49 @@ function previewBanner(url){
   const p=document.getElementById('b-preview');
   if(url){ p.innerHTML=`<img src="${url}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">`; }
   else p.innerHTML='<span style="font-size:28px;color:var(--muted);">🖼️</span>';
+}
+
+function handleBannerImgUpload(input){
+  const file=input.files&&input.files[0];
+  if(!file) return;
+  if(!file.type.startsWith('image/')){ toast('শুধু ছবি ফাইল দিন','var(--red)'); return; }
+  const p=document.getElementById('b-preview');
+  p.innerHTML='<span style="font-size:24px;">⏳</span>';
+  const reader=new FileReader();
+  reader.onload=function(e){
+    const img=new Image();
+    img.onload=function(){
+      const maxDim=1280; // banners are wider than product thumbnails, allow a bigger max dimension
+      let w=img.width, h=img.height;
+      if(w>maxDim||h>maxDim){
+        if(w>h){ h=Math.round(h*maxDim/w); w=maxDim; }
+        else { w=Math.round(w*maxDim/h); h=maxDim; }
+      }
+      const canvas=document.createElement('canvas');
+      canvas.width=w; canvas.height=h;
+      const ctx=canvas.getContext('2d');
+      ctx.drawImage(img,0,0,w,h);
+      canvas.toBlob(function(blob){
+        const formData=new FormData();
+        formData.append('image',blob);
+        fetch('https://api.imgbb.com/1/upload?key='+IMGBB_API_KEY,{method:'POST',body:formData})
+          .then(res=>res.json())
+          .then(data=>{
+            if(data.success){
+              document.getElementById('b-img').value=data.data.url;
+              previewBanner(data.data.url);
+              toast('ছবি আপলোড হয়েছে ✅');
+            } else { throw new Error('Upload failed'); }
+          }).catch(err=>{
+            console.error(err);
+            previewBanner('');
+            toast('ছবি আপলোড করতে সমস্যা হয়েছে','var(--red)');
+          });
+      },'image/jpeg',0.85);
+    };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
 }
 
 function saveBanner(){
