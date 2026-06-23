@@ -679,6 +679,11 @@ const sd=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 let products=[], categories=[], settings={};
 let cart=gd('mb_cart',[]);
 let curCat='all', curProd=null, curQty=1, delType='outside', selPayType='cod';
+// Tracks the Firestore doc ID of the in-progress "draft" order created from partially-filled
+// form fields, so the admin can see (and follow up with) visitors who start an order but never
+// finish it. Reset to null whenever the order modal is opened fresh for a new product/visit.
+let draftOrderId = null;
+let draftSaveTimer = null;
 
 // ══════════════════════════════════
 // DRAGON
@@ -960,6 +965,7 @@ function updSumm(){
 // ══════════════════════════════════
 function openOrderModal(docId){
   if(docId) curProd=findProd(docId)||curProd;
+  draftOrderId = null; // fresh draft tracking each time the modal opens
   document.getElementById('order-form-wrap').style.display='block';
   document.getElementById('order-success').style.display='none';
   const p=curProd;
@@ -981,6 +987,56 @@ function openOrderModal(docId){
   cm('pd-overlay');om('order-overlay');
 }
 function oChQty(d){curQty=Math.max(1,curQty+d);document.getElementById('oqw-num').textContent=curQty;updSumm();}
+
+// ══════════════════════════════════
+// INCOMPLETE / DRAFT ORDERS
+// As soon as a visitor has typed enough to identify them (name OR phone), we save a
+// lightweight "Incomplete" order document. If they finish and submit, this same document
+// gets upgraded to a real "Processing" order (see submitOrder). If they abandon the form,
+// the admin can still see & follow up with them under "Incomplete Orders".
+// Debounced so we don't write to Firestore on every single keystroke.
+// ══════════════════════════════════
+function scheduleDraftSave(){
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(saveDraftOrder, 1200);
+}
+
+function saveDraftOrder(){
+  const name=document.getElementById('o-name').value.trim();
+  const phone=document.getElementById('o-phone').value.trim();
+  const address=document.getElementById('o-address').value.trim();
+  // Only bother saving a draft once there's at least a name or phone to follow up with.
+  if(!name && !phone) return;
+  const p=curProd;
+  const now=new Date();
+  const draftData={
+    name: name || '(নাম নেই)',
+    phone: phone || '',
+    address: address || '',
+    product: p?p.name:'Manual',
+    productId: p?p.id:null,
+    qty: curQty||1,
+    price: p?(p.sale||p.regular||0):0,
+    total: p?(p.sale||p.regular||0)*(curQty||1):0,
+    note: document.getElementById('o-note').value,
+    status:'Incomplete',
+    date: now.toISOString().split('T')[0],
+    time: now.toLocaleTimeString(),
+    createdAtTs: firebase.firestore.Timestamp.now(),
+    createdAt: now.toISOString(),
+    invoice: 'DRAFT-'+String(Date.now()).slice(-6)
+  };
+  if(draftOrderId){
+    ORDERS_COL.doc(draftOrderId).set(draftData,{merge:true}).catch(err=>console.error('Draft update error:',err));
+  } else {
+    ORDERS_COL.add(draftData).then(ref=>{ draftOrderId = ref.id; }).catch(err=>console.error('Draft create error:',err));
+  }
+}
+
+['o-name','o-phone','o-address','o-note'].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el){ el.addEventListener('input', scheduleDraftSave); el.addEventListener('blur', saveDraftOrder); }
+});
 
 function submitOrder(){
   const name=document.getElementById('o-name').value.trim();
@@ -1006,17 +1062,28 @@ function submitOrder(){
   };
   const btn=document.querySelector('.submit-btn');
   if(btn){btn.textContent='⏳ অপেক্ষা করুন...';btn.disabled=true;}
-  ORDERS_COL.add(order).then(()=>{
+
+  function onSuccess(){
     document.getElementById('order-form-wrap').style.display='none';
     document.getElementById('order-success').style.display='block';
     const sp=document.getElementById('success-phone');if(sp)sp.textContent=phone;
-    curProd=null;curQty=1;
+    curProd=null;curQty=1;draftOrderId=null;
     if(btn){btn.textContent='✅ অর্ডার কনফার্ম করুন';btn.disabled=false;}
-  }).catch(err=>{
+  }
+  function onFail(err){
     console.error(err);
     showToast('অর্ডার করতে সমস্যা হয়েছে, আবার চেষ্টা করুন','#EF4444');
     if(btn){btn.textContent='✅ অর্ডার কনফার্ম করুন';btn.disabled=false;}
-  });
+  }
+
+  if(draftOrderId){
+    // Upgrade the existing draft (created while the visitor was filling the form) into a
+    // real order, instead of creating a brand-new document — avoids duplicate entries.
+    clearTimeout(draftSaveTimer);
+    ORDERS_COL.doc(draftOrderId).set(order,{merge:true}).then(onSuccess).catch(onFail);
+  } else {
+    ORDERS_COL.add(order).then(onSuccess).catch(onFail);
+  }
 }
 
 // ══════════════════════════════════
