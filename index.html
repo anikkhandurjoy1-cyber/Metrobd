@@ -56,19 +56,25 @@ nav{position:sticky;top:0;z-index:100;background:rgba(255,255,255,0.97);backdrop
 .marquee-inner span strong{color:var(--primary);margin-right:4px;}
 @keyframes marquee{from{transform:translateX(0);}to{transform:translateX(-50%);}}
 
-/* BANNER */
-.banner-wrap{position:relative;overflow:hidden;height:300px;background:#05050a;}
-.banner-3d-stage{position:relative;width:100%;height:100%;perspective:1200px;}
-.banner-slides{position:absolute;inset:0;transform-style:preserve-3d;}
-.banner-slide{position:absolute;top:50%;left:50%;width:78%;max-width:420px;height:240px;border-radius:16px;overflow:hidden;transform-style:preserve-3d;transition:transform .7s cubic-bezier(.4,0,.2,1),opacity .7s,filter .7s;display:flex;align-items:center;justify-content:center;box-shadow:0 20px 60px rgba(0,0,0,.5);}
-.banner-slide .b-content,.banner-slide>div:not(.b-content){width:100%;height:100%;}
+/* BANNER — full-width, edge-to-edge slide with smooth crossfade+zoom transitions.
+   A subtle depth-tunnel (floating photo cards) lives only along the left/right edges,
+   just visible enough to add a sense of depth without competing with the focused slide. */
+.banner-wrap{position:relative;overflow:hidden;height:280px;background:#05050a;}
+@media(min-width:600px){.banner-wrap{height:380px;}}
+.banner-3d-stage{position:relative;width:100%;height:100%;}
+.banner-slides{position:absolute;inset:0;}
+.banner-slide{position:absolute;inset:0;width:100%;height:100%;overflow:hidden;display:flex;align-items:center;justify-content:flex-start;opacity:0;transform:scale(1.06);transition:opacity 1.1s ease,transform 1.4s ease;background-size:cover;background-position:center;}
+.banner-slide.active{opacity:1;transform:scale(1);z-index:5;}
+.banner-slide>.banner-mini-slideshow,.banner-slide>iframe{width:100%;height:100%;}
+.banner-slide-overlay{position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,.15) 45%,rgba(0,0,0,0) 70%);z-index:1;}
 
-/* 3D depth tunnel — floating thumbnail cards behind the focused slide, giving the same sense
-   of depth/perspective as a "cubic gallery" effect, built from the admin's own banner images. */
-.banner-tunnel{position:absolute;inset:0;transform-style:preserve-3d;pointer-events:none;}
-.tunnel-card{position:absolute;top:50%;left:50%;border-radius:10px;overflow:hidden;background-size:cover;background-position:center;opacity:.35;filter:blur(1px) brightness(.6);animation:tunnelDrift 14s ease-in-out infinite;box-shadow:0 10px 30px rgba(0,0,0,.4);}
-@keyframes tunnelDrift{0%,100%{transform:translate(-50%,-50%) translateZ(var(--tz,0px)) translateX(var(--tx,0px)) translateY(var(--ty,0px)) rotate(var(--tr,0deg));}50%{transform:translate(-50%,-50%) translateZ(calc(var(--tz,0px) - 18px)) translateX(calc(var(--tx,0px) + 6px)) translateY(calc(var(--ty,0px) - 6px)) rotate(var(--tr,0deg));}}
-.banner-vignette{position:absolute;inset:0;background:radial-gradient(circle at 50% 50%, transparent 35%, rgba(5,5,10,.85) 100%);pointer-events:none;z-index:1;}
+/* Subtle depth-tunnel — small floating thumbnails confined to the far left/right edges only,
+   built from the admin's own banner/product images, adding ambient depth without crowding
+   the focused banner content in the center. */
+.banner-tunnel{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:0;}
+.tunnel-card{position:absolute;border-radius:8px;overflow:hidden;background-size:cover;background-position:center;opacity:.22;filter:blur(.5px) brightness(.55);animation:tunnelDrift 16s ease-in-out infinite;box-shadow:0 6px 20px rgba(0,0,0,.4);}
+@keyframes tunnelDrift{0%,100%{transform:translateY(0) scale(1);}50%{transform:translateY(-10px) scale(1.04);}}
+.banner-vignette{position:absolute;inset:0;box-shadow:inset 0 0 80px 20px rgba(5,5,10,.5);pointer-events:none;z-index:2;}
 
 /* Mini slideshow inside a single banner slide — used when a banner has multiple images */
 .banner-mini-slideshow{position:absolute;inset:0;}
@@ -94,7 +100,8 @@ nav{position:sticky;top:0;z-index:100;background:rgba(255,255,255,0.97);backdrop
 .star{position:absolute;background:#fff;border-radius:50%;animation:twinkle ease-in-out infinite;}
 @keyframes twinkle{0%,100%{opacity:.2;transform:scale(1);}50%{opacity:1;transform:scale(1.3);}}
 
-.b-content{position:relative;z-index:2;text-align:center;padding:16px 20px;}
+.b-content{position:relative;z-index:2;text-align:left;padding:0 24px;max-width:340px;}
+@media(min-width:600px){.b-content{padding:0 60px;max-width:480px;}}
 .b-tag{background:rgba(0,229,255,0.12);border:1px solid rgba(0,229,255,0.4);color:var(--primary);padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:2px;display:inline-block;margin-bottom:10px;}
 .b-title{font-family:'Orbitron',sans-serif;font-size:clamp(20px,5.5vw,38px);font-weight:900;color:#fff;line-height:1.1;margin-bottom:6px;}
 .b-title .hl{color:var(--primary);}
@@ -727,7 +734,8 @@ function renderCustomerBanners(){
 
   if(!activeBanners.length){
     // No banners configured in admin yet — show one simple default slide instead of a blank space.
-    slidesWrap.innerHTML = `<div class="banner-slide" data-i="0" style="background:linear-gradient(135deg,var(--primary2),var(--primary));">
+    slidesWrap.innerHTML = `<div class="banner-slide active" data-i="0" style="background:linear-gradient(135deg,var(--primary2),var(--primary));">
+      <div class="banner-slide-overlay"></div>
       <div class="b-content">
         <div class="b-title">সেরা <span class="hl">গ্যাজেট</span><br>সেরা দামে</div>
         <div class="b-sub">বাংলাদেশের #১ গ্যাজেট শপ — MetroBD</div>
@@ -763,8 +771,9 @@ function renderCustomerBanners(){
       bg = `background:${b.bg || 'linear-gradient(135deg,var(--primary2),var(--primary))'};`;
     }
     return `<div class="banner-slide" data-i="${i}" style="${bg}">
+      <div class="banner-slide-overlay"></div>
       ${mediaHtml}
-      <div class="b-content" style="position:relative;z-index:2;">
+      <div class="b-content">
         ${b.text?`<div class="b-title">${b.text}</div>`:''}
         ${b.sub?`<div class="b-sub">${b.sub}</div>`:''}
         <button class="b-btn b-btn-cyan" onclick="openOrderModal(null)">অর্ডার করুন</button>
@@ -778,7 +787,7 @@ function renderCustomerBanners(){
   bannerIdx = 0;
   if(bannerTimer) clearInterval(bannerTimer);
   if(TOTAL_BANNERS>1){
-    bannerTimer = setInterval(()=>goBanner(bannerIdx+1),4000);
+    bannerTimer = setInterval(()=>goBanner(bannerIdx+1),4500);
   }
   goBanner(0);
 
@@ -786,7 +795,7 @@ function renderCustomerBanners(){
   // of the main banner rotation — each cycles through its own images every 2.5s.
   startBannerMiniSlideshows();
 
-  // Build the floating depth-tunnel using all banner images (image-type banners only —
+  // Build the subtle depth-tunnel using all banner images (image-type banners only —
   // gradient/video slides don't have a photo to float). Falls back to product photos if there
   // aren't enough banner images, so the tunnel still looks full even with just 1-2 banners.
   let tunnelImages = [];
@@ -824,59 +833,48 @@ function startBannerMiniSlideshows(){
   });
 }
 
+// Floating thumbnail cards confined to the far left/right edges of the banner (roughly the
+// outer 16% on each side), so they add ambient depth without ever overlapping the centered
+// banner text/content. Each card drifts gently up and down.
 function renderTunnelCards(images){
   const tunnel = document.getElementById('banner-tunnel');
   if(!images.length){ tunnel.innerHTML=''; return; }
-  // Place cards in a rough ring around the focused slide, at varying depths (translateZ),
-  // sizes, and drift-animation offsets — this is what gives the "floating photos in a tunnel"
-  // sense of depth without needing a heavy 3D engine.
   const positions = [
-    {x:-130,y:-70,z:-180,r:-8,w:70,h:50},
-    {x:120,y:-90,z:-220,r:6,w:60,h:44},
-    {x:-160,y:50,z:-260,r:10,w:64,h:46},
-    {x:150,y:60,z:-200,r:-6,w:72,h:52},
-    {x:-90,y:-110,z:-300,r:4,w:50,h:38},
-    {x:95,y:100,z:-280,r:-10,w:54,h:40},
-    {x:-200,y:0,z:-340,r:8,w:46,h:34},
-    {x:200,y:-10,z:-320,r:-4,w:48,h:36},
-    {x:0,y:-130,z:-260,r:12,w:56,h:42},
-    {x:0,y:130,z:-260,r:-12,w:56,h:42}
+    {side:'left',  top:'10%',  size:64},
+    {side:'left',  top:'58%',  size:48},
+    {side:'right', top:'14%',  size:56},
+    {side:'right', top:'62%',  size:60},
+    {side:'left',  top:'82%',  size:40},
+    {side:'right', top:'86%',  size:42}
   ];
   tunnel.innerHTML = images.slice(0,positions.length).map((url,i)=>{
     const pos = positions[i];
-    const delay = (i*0.7).toFixed(1);
+    const edgeOffset = (i%3)*6; // stagger how far into the edge zone each card sits
+    const sideStyle = pos.side==='left' ? `left:${2+edgeOffset}%;` : `right:${2+edgeOffset}%;`;
+    const delay = (i*1.1).toFixed(1);
     return `<div class="tunnel-card" style="
-      width:${pos.w}px;height:${pos.h}px;
+      width:${pos.size}px;height:${Math.round(pos.size*0.72)}px;
+      top:${pos.top}; ${sideStyle}
       background-image:url('${url}');
-      --tx:${pos.x}px; --ty:${pos.y}px; --tz:${pos.z}px; --tr:${pos.r}deg;
       animation-delay:${delay}s;
-      transform:translate(-50%,-50%) translateZ(${pos.z}px) translateX(${pos.x}px) translateY(${pos.y}px) rotate(${pos.r}deg);
     "></div>`;
   }).join('');
 }
 
+// Simple, smooth crossfade between banner slides (no carousel/3D transform) — the active
+// slide fades+scales in over the previous one, which is what gives the modern "hero banner"
+// feel used by big e-commerce sites, instead of a side-scrolling card carousel.
 function goBanner(i){
   bannerIdx=(i+TOTAL_BANNERS)%TOTAL_BANNERS;
-  const slides=document.querySelectorAll('.banner-slide');
-  slides.forEach((s,j)=>{
-    let off=j-bannerIdx;
-    if(off>TOTAL_BANNERS/2) off-=TOTAL_BANNERS;
-    if(off<-TOTAL_BANNERS/2) off+=TOTAL_BANNERS;
-    const abs=Math.abs(off);
-    let tx=off*62, rotY=off*-38, scale=1-abs*0.18, z=-abs*140, opacity=1-abs*0.35, blur=abs*1.5;
-    if(abs>2){opacity=0;}
-    s.style.transform=`translate(-50%,-50%) translateX(${tx}%) translateZ(${z}px) rotateY(${rotY}deg) scale(${Math.max(scale,0.6)})`;
-    s.style.opacity=opacity;
-    s.style.zIndex=10-abs;
-    s.style.filter=`blur(${blur}px) brightness(${1-abs*0.15})`;
-    s.style.pointerEvents=off===0?'auto':'none';
+  document.querySelectorAll('.banner-slide').forEach((s,j)=>{
+    s.classList.toggle('active', j===bannerIdx);
   });
   document.querySelectorAll('.banner-dot').forEach((d,j)=>d.classList.toggle('active',j===bannerIdx));
 }
 function slideBanner(d){
   if(bannerTimer) clearInterval(bannerTimer);
   goBanner(bannerIdx+d);
-  if(TOTAL_BANNERS>1){ bannerTimer=setInterval(()=>goBanner(bannerIdx+1),4000); }
+  if(TOTAL_BANNERS>1){ bannerTimer=setInterval(()=>goBanner(bannerIdx+1),4500); }
 }
 
 
