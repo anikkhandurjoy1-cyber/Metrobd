@@ -703,11 +703,8 @@ tr:hover td{background:rgba(0,0,0,0.02);}
       </div>
     </div>
     <div id="b-image-wrap" style="display:none;">
-      <label>Banner Image <span style="color:var(--muted);font-size:11px;">(ফোন থেকে ছবি বাছুন)</span></label>
-      <input type="file" id="b-img-file" accept="image/*" onchange="handleBannerImgUpload(this)" style="display:none;">
-      <button type="button" class="btn btn-o" style="width:100%;justify-content:center;margin-top:4px;" onclick="document.getElementById('b-img-file').click()">📁 Browse Image</button>
-      <input type="hidden" id="b-img">
-      <div class="banner-preview" id="b-preview" style="margin-top:8px;"><span style="font-size:28px;color:var(--muted);">🖼️</span></div>
+      <label>Banner Images <span style="color:var(--muted);font-size:11px;">(সর্বোচ্চ ৪টা — একই banner-এ আপনাআপনি ঘুরে দেখাবে)</span></label>
+      <div id="b-img-slots" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;"></div>
       <div style="margin-top:6px;margin-bottom:10px;font-size:11px;color:var(--muted);">💡 প্রস্থ:উচ্চতা প্রায় 16:9 অনুপাতের ছবি দিলে ভালো দেখাবে</div>
     </div>
     <div id="b-video-wrap" style="display:none;">
@@ -1587,17 +1584,19 @@ function delCourier(id){ if(!confirm('Delete?')) return; couriers=couriers.filte
 // ══════════════════════════════════════════
 // BANNERS (still in STORE_DOC — small data)
 // ══════════════════════════════════════════
+const MAX_BANNER_IMAGES = 4;
+let bImages = []; // image URLs for the banner currently being added/edited (index 0 = first shown)
+
 function resetBF(){
   document.getElementById('b-type').value='gradient';
   document.getElementById('b-text').value='';
   document.getElementById('b-sub').value='';
-  document.getElementById('b-img').value='';
   document.getElementById('b-vid').value='';
   document.getElementById('b-st').value='Active';
-  const bFileInput=document.getElementById('b-img-file'); if(bFileInput) bFileInput.value='';
+  bImages = [];
+  renderBannerImgSlots();
   toggleBannerType('gradient');
   document.getElementById('bm-title').textContent='Add Banner';
-  document.getElementById('b-preview').innerHTML='<span style="font-size:28px;color:var(--muted);">🖼️</span>';
 }
 
 function toggleBannerType(v){
@@ -1606,18 +1605,36 @@ function toggleBannerType(v){
   document.getElementById('b-video-wrap').style.display = v==='video'?'block':'none';
 }
 
-function previewBanner(url){
-  const p=document.getElementById('b-preview');
-  if(url){ p.innerHTML=`<img src="${url}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">`; }
-  else p.innerHTML='<span style="font-size:28px;color:var(--muted);">🖼️</span>';
+function renderBannerImgSlots(){
+  const wrap = document.getElementById('b-img-slots');
+  let html = '';
+  for(let i=0;i<MAX_BANNER_IMAGES;i++){
+    const url = bImages[i];
+    html += `<div style="width:100px;height:62px;border-radius:8px;overflow:hidden;background:var(--surface);display:flex;align-items:center;justify-content:center;border:1px solid var(--border);position:relative;" id="b-img-slot-${i}">`;
+    if(url){
+      html += `<img src="${url}" style="width:100%;height:100%;object-fit:cover;" alt="">
+        <button type="button" onclick="removeBannerImage(${i})" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.6);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer;line-height:1;">✕</button>
+        ${i===0?'<span style="position:absolute;bottom:2px;left:2px;background:var(--primary);color:#fff;font-size:9px;padding:1px 5px;border-radius:4px;">1st</span>':''}`;
+    } else {
+      html += `<span style="font-size:22px;cursor:pointer;color:var(--muted);" onclick="document.getElementById('b-img-file-${i}').click()">+</span>
+        <input type="file" id="b-img-file-${i}" accept="image/*" onchange="handleBannerImgUpload(this,${i})" style="display:none;">`;
+    }
+    html += `</div>`;
+  }
+  wrap.innerHTML = html;
 }
 
-function handleBannerImgUpload(input){
+function removeBannerImage(idx){
+  bImages.splice(idx,1);
+  renderBannerImgSlots();
+}
+
+function handleBannerImgUpload(input,slotIdx){
   const file=input.files&&input.files[0];
   if(!file) return;
   if(!file.type.startsWith('image/')){ toast('শুধু ছবি ফাইল দিন','var(--red)'); return; }
-  const p=document.getElementById('b-preview');
-  p.innerHTML='<span style="font-size:24px;">⏳</span>';
+  const slotEl = document.getElementById('b-img-slot-'+slotIdx);
+  if(slotEl) slotEl.innerHTML = '<span style="font-size:20px;">⏳</span>';
   const reader=new FileReader();
   reader.onload=function(e){
     const img=new Image();
@@ -1639,13 +1656,13 @@ function handleBannerImgUpload(input){
           .then(res=>res.json())
           .then(data=>{
             if(data.success){
-              document.getElementById('b-img').value=data.data.url;
-              previewBanner(data.data.url);
+              bImages[slotIdx] = data.data.url;
+              renderBannerImgSlots();
               toast('ছবি আপলোড হয়েছে ✅');
             } else { throw new Error('Upload failed'); }
           }).catch(err=>{
             console.error(err);
-            previewBanner('');
+            renderBannerImgSlots();
             toast('ছবি আপলোড করতে সমস্যা হয়েছে','var(--red)');
           });
       },'image/jpeg',0.85);
@@ -1659,7 +1676,11 @@ function saveBanner(){
   const type=document.getElementById('b-type').value;
   const data={type,text:document.getElementById('b-text').value,sub:document.getElementById('b-sub').value,status:document.getElementById('b-st').value};
   if(type==='gradient') data.bg=document.getElementById('b-bg').value;
-  if(type==='image') data.url=document.getElementById('b-img').value;
+  if(type==='image'){
+    const images = bImages.filter(Boolean);
+    data.images = images;
+    data.url = images[0] || ''; // kept for backward compatibility with any code expecting a single url
+  }
   if(type==='video') data.videoUrl=document.getElementById('b-vid').value;
   if(editB) Object.assign(editB,data);
   else banners.push({id:Date.now(),...data});
@@ -1697,7 +1718,9 @@ function editBanner(id){
   document.getElementById('b-st').value=editB.status;
   toggleBannerType(editB.type);
   if(editB.bg) document.getElementById('b-bg').value=editB.bg;
-  if(editB.url){ document.getElementById('b-img').value=editB.url; previewBanner(editB.url); }
+  // Support both old banners (single `url`) and new ones (`images` array)
+  bImages = (editB.images && editB.images.length) ? [...editB.images] : (editB.url ? [editB.url] : []);
+  renderBannerImgSlots();
   if(editB.videoUrl) document.getElementById('b-vid').value=editB.videoUrl;
   om('banner-modal');
 }
