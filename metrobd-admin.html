@@ -498,6 +498,10 @@ tr:hover td{background:rgba(0,0,0,0.02);}
           <div class="fg" style="grid-column:1/-1"><label>Top Bar Info</label><input type="text" id="s-tb" placeholder="FREE DELIVERY সারা বাংলাদেশ"></div>
           <div class="fg" style="grid-column:1/-1"><label>Thank You Text</label><input type="text" id="s-ty" placeholder="ধন্যবাদ অর্ডার করার জন্য!"></div>
           <div class="fg" style="grid-column:1/-1"><label>Footer Copyright</label><input type="text" id="s-fc" placeholder="© 2025 MetroBD"></div>
+          <div class="fg" style="grid-column:1/-1">
+            <label>Product Disclaimer <span style="color:var(--muted);font-size:11px;">(সব প্রোডাক্টের description-এর নিচে automatic দেখাবে)</span></label>
+            <textarea id="s-disc" placeholder="বিঃদ্রঃ- ..." style="min-height:90px;"></textarea>
+          </div>
         </div>
         <button class="btn btn-p" onclick="saveS('general')">✅ Save</button>
       </div>
@@ -1835,7 +1839,7 @@ function sst(tab,el){
 function loadSettings(){
   const g=(id,key)=>{ const el=document.getElementById(id); if(el&&settings[key]!==undefined) el.value=settings[key]; };
   g('s-sn','sitename'); g('s-st','sitetitle'); g('s-ph','phone'); g('s-pt','phonetext');
-  g('s-ad','address'); g('s-tb','topbar'); g('s-ty','thankyou'); g('s-fc','footer');
+  g('s-ad','address'); g('s-tb','topbar'); g('s-ty','thankyou'); g('s-fc','footer'); g('s-disc','product_disclaimer');
   g('s-id','dhaka_inside'); g('s-idt','dhaka_inside_text'); g('s-od','dhaka_outside'); g('s-odt','dhaka_outside_text');
   g('s-ip','invoice_prefix'); g('s-pp','invoice_perpage'); g('s-ii','invoice_info'); g('s-in','invoice_note');
   g('s-fb','fb'); g('s-tt','tiktok'); g('s-yt','yt'); g('s-ig','ig'); g('s-wa','wa');
@@ -1846,7 +1850,7 @@ function loadSettings(){
 function saveS(tab){
   const g=id=>{ const el=document.getElementById(id); return el?el.value:''; };
   const map = {
-    general:{sitename:'s-sn',sitetitle:'s-st',phone:'s-ph',phonetext:'s-pt',address:'s-ad',topbar:'s-tb',thankyou:'s-ty',footer:'s-fc'},
+    general:{sitename:'s-sn',sitetitle:'s-st',phone:'s-ph',phonetext:'s-pt',address:'s-ad',topbar:'s-tb',thankyou:'s-ty',footer:'s-fc',product_disclaimer:'s-disc'},
     delivery:{dhaka_inside:'s-id',dhaka_inside_text:'s-idt',dhaka_outside:'s-od',dhaka_outside_text:'s-odt'},
     invoice:{invoice_prefix:'s-ip',invoice_perpage:'s-pp',invoice_info:'s-ii',invoice_note:'s-in'},
     social:{fb:'s-fb',tiktok:'s-tt',yt:'s-yt',ig:'s-ig',wa:'s-wa'},
