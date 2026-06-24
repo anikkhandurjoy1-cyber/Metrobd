@@ -69,6 +69,11 @@ nav{position:sticky;top:0;z-index:100;background:rgba(255,255,255,0.97);backdrop
 .tunnel-card{position:absolute;top:50%;left:50%;border-radius:10px;overflow:hidden;background-size:cover;background-position:center;opacity:.35;filter:blur(1px) brightness(.6);animation:tunnelDrift 14s ease-in-out infinite;box-shadow:0 10px 30px rgba(0,0,0,.4);}
 @keyframes tunnelDrift{0%,100%{transform:translate(-50%,-50%) translateZ(var(--tz,0px)) translateX(var(--tx,0px)) translateY(var(--ty,0px)) rotate(var(--tr,0deg));}50%{transform:translate(-50%,-50%) translateZ(calc(var(--tz,0px) - 18px)) translateX(calc(var(--tx,0px) + 6px)) translateY(calc(var(--ty,0px) - 6px)) rotate(var(--tr,0deg));}}
 .banner-vignette{position:absolute;inset:0;background:radial-gradient(circle at 50% 50%, transparent 35%, rgba(5,5,10,.85) 100%);pointer-events:none;z-index:1;}
+
+/* Mini slideshow inside a single banner slide — used when a banner has multiple images */
+.banner-mini-slideshow{position:absolute;inset:0;}
+.bms-layer{position:absolute;inset:0;background-size:cover;background-position:center;opacity:0;transition:opacity 1s ease-in-out;}
+.bms-layer.active{opacity:1;}
 /* B1 Grid */
 .b1{background:#000;}
 .b1-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(0,229,255,0.08) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,0.08) 1px,transparent 1px);background-size:36px 36px;animation:gridMove 8s linear infinite;}
@@ -740,8 +745,17 @@ function renderCustomerBanners(){
   slidesWrap.innerHTML = activeBanners.map((b,i)=>{
     let bg = '';
     let mediaHtml = '';
-    if(b.type==='image' && b.url){
-      bg = `background-image:url('${b.url}');background-size:cover;background-position:center;`;
+    const imgs = (b.images && b.images.length) ? b.images : (b.url ? [b.url] : []);
+    if(b.type==='image' && imgs.length){
+      if(imgs.length===1){
+        bg = `background-image:url('${imgs[0]}');background-size:cover;background-position:center;`;
+      } else {
+        // Multiple images on this one banner: render them as stacked layers that cross-fade
+        // into each other automatically — a small slideshow living inside a single slide.
+        mediaHtml = `<div class="banner-mini-slideshow" data-imgcount="${imgs.length}">
+          ${imgs.map((url,j)=>`<div class="bms-layer${j===0?' active':''}" style="background-image:url('${url}');"></div>`).join('')}
+        </div>`;
+      }
     } else if(b.type==='video' && b.videoUrl){
       const v = b.videoUrl.replace('watch?v=','embed/').replace('youtu.be/','www.youtube.com/embed/');
       mediaHtml = `<iframe src="${v}" style="position:absolute;inset:0;width:100%;height:100%;border:none;" allowfullscreen></iframe>`;
@@ -768,10 +782,18 @@ function renderCustomerBanners(){
   }
   goBanner(0);
 
-  // Build the floating depth-tunnel using the same banner images (image-type banners only —
+  // Start each slide's internal mini-slideshow (for banners with multiple images) independently
+  // of the main banner rotation — each cycles through its own images every 2.5s.
+  startBannerMiniSlideshows();
+
+  // Build the floating depth-tunnel using all banner images (image-type banners only —
   // gradient/video slides don't have a photo to float). Falls back to product photos if there
   // aren't enough banner images, so the tunnel still looks full even with just 1-2 banners.
-  let tunnelImages = activeBanners.filter(b=>b.type==='image' && b.url).map(b=>b.url);
+  let tunnelImages = [];
+  activeBanners.filter(b=>b.type==='image').forEach(b=>{
+    const imgs = (b.images && b.images.length) ? b.images : (b.url ? [b.url] : []);
+    tunnelImages = tunnelImages.concat(imgs);
+  });
   if(tunnelImages.length < 6 && products.length){
     const extra = products.filter(p=>{
       const img = (p.images && p.images[0]) || p.imageUrl;
@@ -780,6 +802,26 @@ function renderCustomerBanners(){
     tunnelImages = tunnelImages.concat(extra).slice(0, 10);
   }
   renderTunnelCards(tunnelImages);
+}
+
+// Each banner slide that has multiple images runs its own independent cross-fade cycle
+// (every 2.5s), separate from the main banner rotation timer. Intervals are cleared and
+// restarted whenever banners re-render, so they never pile up or leak.
+let bannerMiniTimers = [];
+function startBannerMiniSlideshows(){
+  bannerMiniTimers.forEach(t=>clearInterval(t));
+  bannerMiniTimers = [];
+  document.querySelectorAll('.banner-mini-slideshow').forEach(container=>{
+    const layers = container.querySelectorAll('.bms-layer');
+    if(layers.length<2) return;
+    let idx = 0;
+    const timer = setInterval(()=>{
+      layers[idx].classList.remove('active');
+      idx = (idx+1) % layers.length;
+      layers[idx].classList.add('active');
+    }, 2500);
+    bannerMiniTimers.push(timer);
+  });
 }
 
 function renderTunnelCards(images){
