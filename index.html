@@ -912,6 +912,7 @@ function showTab(tab){
 // ══════════════════════════════════
 // SETTINGS
 // ══════════════════════════════════
+let pixelsInjected = false;
 function applySettings(){
   if(settings.fb){document.getElementById('f-fb').href=settings.fb;document.getElementById('c-fb').href=settings.fb;}
   if(settings.tiktok){document.getElementById('f-tt').href=settings.tiktok;document.getElementById('c-tt').href=settings.tiktok;}
@@ -919,6 +920,90 @@ function applySettings(){
   if(settings.footer) document.getElementById('f-copy').textContent=settings.footer;
   if(settings.dhaka_outside) document.getElementById('del-outside-p').textContent=settings.dhaka_outside+' টাকা';
   if(settings.dhaka_inside) document.getElementById('del-inside-p').textContent=settings.dhaka_inside+' টাকা';
+  injectTrackingPixels();
+}
+
+// Fires a ViewContent event when a visitor opens a product's detail view, and an AddToCart
+// event when they add something to the cart. These earlier-funnel signals help Meta/TikTok's
+// algorithm learn faster (it has more data points to optimize against than Purchase alone),
+// and they power retargeting audiences like "people who viewed but didn't buy."
+function fireViewContentEvent(p){
+  const value = p.sale||p.regular||0;
+  try{
+    if(typeof fbq === 'function'){
+      fbq('track', 'ViewContent', {content_name: p.name, content_ids: [p.id], value, currency: 'BDT'});
+    }
+  }catch(e){ console.error('FB pixel viewcontent event error:', e); }
+  try{
+    if(typeof ttq !== 'undefined' && ttq.track){
+      ttq.track('ViewContent', {content_name: p.name, content_id: String(p.id), value, currency: 'BDT'});
+    }
+  }catch(e){ console.error('TikTok pixel viewcontent event error:', e); }
+}
+
+function fireAddToCartEvent(p){
+  const value = p.sale||p.regular||0;
+  try{
+    if(typeof fbq === 'function'){
+      fbq('track', 'AddToCart', {content_name: p.name, content_ids: [p.id], value, currency: 'BDT'});
+    }
+  }catch(e){ console.error('FB pixel addtocart event error:', e); }
+  try{
+    if(typeof ttq !== 'undefined' && ttq.track){
+      ttq.track('AddToCart', {content_name: p.name, content_id: String(p.id), value, currency: 'BDT'});
+    }
+  }catch(e){ console.error('TikTok pixel addtocart event error:', e); }
+}
+
+// Fires a Purchase conversion event to whichever ad pixels are installed (Meta's fbq and/or
+// TikTok's ttq). Both libraries attach themselves to `window` once their snippet runs, so we
+// guard each call with a typeof check — if the admin hasn't pasted a pixel code, these
+// functions simply won't exist yet, and we skip silently rather than throwing an error.
+function firePurchaseEvent(value, quantity){
+  try{
+    if(typeof fbq === 'function'){
+      fbq('track', 'Purchase', {value: value||0, currency: 'BDT', num_items: quantity||1});
+    }
+  }catch(e){ console.error('FB pixel purchase event error:', e); }
+  try{
+    if(typeof ttq !== 'undefined' && ttq.track){
+      ttq.track('CompletePayment', {value: value||0, currency: 'BDT', quantity: quantity||1});
+    }
+  }catch(e){ console.error('TikTok pixel purchase event error:', e); }
+}
+
+// Injects the Facebook Pixel, TikTok Pixel, and Google Analytics code that the admin pastes
+// into Settings → Analytics/Pixel. Runs only once per page load (guarded by `pixelsInjected`)
+// even though `applySettings` itself may run multiple times (e.g. on every realtime settings
+// update) — re-injecting the same pixel script on every update would fire duplicate PageView
+// events and inflate Meta/TikTok's reported numbers.
+function injectTrackingPixels(){
+  if(pixelsInjected) return;
+  if(!settings.fbpixel && !settings.tkpixel && !settings.ga) return; // nothing to inject yet
+  pixelsInjected = true;
+  [
+    {key:'fbpixel', id:'pixel-fb'},
+    {key:'tkpixel', id:'pixel-tk'},
+    {key:'ga', id:'pixel-ga'}
+  ].forEach(({key,id})=>{
+    const code = settings[key];
+    if(!code) return;
+    const container = document.createElement('div');
+    container.innerHTML = code;
+    // Re-create any <script> tags found inside the pasted snippet — innerHTML alone does not
+    // execute scripts, so they must be rebuilt and appended to actually run.
+    container.querySelectorAll('script').forEach(oldScript=>{
+      const newScript = document.createElement('script');
+      Array.from(oldScript.attributes).forEach(attr=>newScript.setAttribute(attr.name, attr.value));
+      newScript.text = oldScript.textContent;
+      document.head.appendChild(newScript);
+    });
+    // Any non-script markup in the pasted snippet (e.g. Meta's <noscript> pixel image fallback)
+    // gets appended to the body so it still renders.
+    container.querySelectorAll('noscript').forEach(ns=>{
+      document.body.appendChild(ns.cloneNode(true));
+    });
+  });
 }
 
 // ══════════════════════════════════
@@ -977,6 +1062,7 @@ let pdImages = []; // images for the currently-open product detail gallery
 function openDetail(docId){
   const p=findProd(docId);if(!p)return;
   curProd=p;curQty=1;
+  fireViewContentEvent(p);
   const disc=p.sale&&p.regular?Math.round((1-p.sale/p.regular)*100):0;
   pdImages = (p.images && p.images.length) ? p.images : (p.imageUrl ? [p.imageUrl] : []);
   let media='';
@@ -1150,6 +1236,11 @@ function submitOrder(){
     document.getElementById('order-form-wrap').style.display='none';
     document.getElementById('order-success').style.display='block';
     const sp=document.getElementById('success-phone');if(sp)sp.textContent=phone;
+    // Fire the Purchase conversion event for whichever ad pixels are installed. This is the
+    // single most important event for ad optimization — without it, Meta/TikTok only know
+    // people *visited* the site, not who actually bought something, so their algorithms can't
+    // learn who to show ads to for better results.
+    firePurchaseEvent(order.total, order.qty);
     curProd=null;curQty=1;draftOrderId=null;
     if(btn){btn.textContent='✅ অর্ডার কনফার্ম করুন';btn.disabled=false;}
   }
@@ -1177,6 +1268,7 @@ function addCart(docId){
   const mainImg = (p.images && p.images.length) ? p.images[0] : (p.imageUrl||'');
   const ex=cart.find(c=>c.id==docId);if(ex)ex.qty++;else cart.push({id:docId,name:p.name,price:p.sale||p.regular||0,imageUrl:mainImg,qty:1});
   sd('mb_cart',cart);updateCart();showToast('Cart-এ যোগ হয়েছে ✅');
+  fireAddToCartEvent(p);
 }
 function updateCart(){document.getElementById('cart-count').textContent=cart.reduce((a,c)=>a+c.qty,0);}
 function openCart(){
