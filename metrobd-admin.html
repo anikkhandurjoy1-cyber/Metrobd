@@ -252,6 +252,9 @@ tr:hover td{background:rgba(0,0,0,0.02);}
   </div>
   <div class="tb-right">
     <div class="tb-date" id="tb-date"></div>
+    <div id="new-order-bell" onclick="ackNewOrders()" style="position:relative;cursor:pointer;font-size:20px;display:none;" title="নতুন অর্ডার এসেছে — ক্লিক করে দেখুন">
+      🔔<span id="new-order-count" style="position:absolute;top:-6px;right:-8px;background:var(--red,#EF4444);color:#fff;font-size:11px;font-weight:700;border-radius:10px;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;padding:0 4px;">0</span>
+    </div>
     <div class="tb-admin">👑 Admin</div>
     <a href="index.html" target="_blank" class="btn btn-o btn-sm">🌐 Site দেখুন</a>
   </div>
@@ -823,6 +826,73 @@ let curOrderPage = 0;
 let lastOrderPageHasMore = false;
 
 let unsubscribeStore=null;
+let unsubscribeNewOrders=null;
+let lastSeenOrderTs=null;   // createdAtTs (ms) of the most recent order the admin has acknowledged
+let newOrderCount=0;        // how many orders have arrived since last acknowledged
+let newOrderSound=null;
+
+// Lightweight realtime watcher: listens ONLY to the single most-recent order document (cheap —
+// 1 doc read per change, not the whole orders collection) so the admin sees new customer orders
+// pop up live without needing to keep re-fetching/paginating the full Orders list.
+function startNewOrderWatcher(){
+  if(unsubscribeNewOrders) return;
+  unsubscribeNewOrders = ORDERS_COL.orderBy('createdAtTs','desc').limit(1).onSnapshot(snap=>{
+    if(snap.empty) return;
+    const latest = snap.docs[0].data();
+    const latestTs = latest.createdAtTs && latest.createdAtTs.toMillis ? latest.createdAtTs.toMillis() : 0;
+    if(lastSeenOrderTs===null){
+      // First load after login/refresh: just record the current latest order, don't alert
+      // for orders that already existed before this admin session started.
+      lastSeenOrderTs = latestTs;
+      return;
+    }
+    if(latestTs > lastSeenOrderTs){
+      lastSeenOrderTs = latestTs;
+      newOrderCount++;
+      showNewOrderBell();
+      toast('🛒 নতুন অর্ডার এসেছে! ('+(latest.name||'')+')','var(--green,#22C55E)');
+      playNewOrderSound();
+      // If the admin is already looking at the Orders or Dashboard page, refresh it automatically
+      // so they don't have to click anything to see the new order while they're on that page.
+      const active=document.querySelector('.page.active');
+      const pid = active ? active.id.replace('pg-','') : '';
+      if(pid==='orders'){ loadOrdersPage(curOrderPage); ackNewOrders(); }
+      else if(pid==='dashboard'){ loadDashboard(); ackNewOrders(); }
+    }
+  }, err=>{
+    console.error('New order watcher error:',err);
+  });
+}
+
+function showNewOrderBell(){
+  document.getElementById('new-order-bell').style.display='inline-block';
+  document.getElementById('new-order-count').textContent = newOrderCount;
+}
+
+function ackNewOrders(){
+  newOrderCount=0;
+  document.getElementById('new-order-bell').style.display='none';
+  // Jump to Orders with a fresh load so the admin sees the new order(s) immediately.
+  sp('orders','all');
+}
+
+function playNewOrderSound(){
+  try{
+    if(!newOrderSound){
+      // Short two-tone beep generated on the fly (no external audio file needed).
+      const ctx = new (window.AudioContext||window.webkitAudioContext)();
+      newOrderSound = ctx;
+    }
+    const ctx = newOrderSound;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value = 880; g.gain.value = 0.15;
+    o.start();
+    setTimeout(()=>{ o.frequency.value = 660; }, 120);
+    setTimeout(()=>{ o.stop(); }, 260);
+  }catch(e){ /* audio not critical, ignore failures (e.g. autoplay restrictions) */ }
+}
+
 function startRealtimeSync(){
   if(unsubscribeStore) return;
   // Realtime sync ONLY for small data: categories, couriers, users, settings, banners.
@@ -900,6 +970,7 @@ function enterAdminPanel(d){
   settings=d.settings||{}; banners=d.banners||[];
   dataLoaded=true;
   startRealtimeSync();
+  startNewOrderWatcher();
   document.getElementById('login-page').style.display='none';
   document.getElementById('admin-panel').style.display='block';
   loadProducts().then(()=>{
@@ -924,6 +995,9 @@ if(sessionStorage.getItem('mb_admin_session')==='1'){
 
 function doLogout(){
   sessionStorage.removeItem('mb_admin_session');
+  if(unsubscribeNewOrders){ unsubscribeNewOrders(); unsubscribeNewOrders=null; }
+  lastSeenOrderTs=null; newOrderCount=0;
+  document.getElementById('new-order-bell').style.display='none';
   document.getElementById('admin-panel').style.display='none';
   document.getElementById('login-page').style.display='flex';
   document.getElementById('l-pass').value='';
