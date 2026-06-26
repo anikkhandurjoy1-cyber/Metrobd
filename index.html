@@ -404,6 +404,8 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:22px
   </div>
   <div class="products-grid" id="products-grid"></div>
   <div class="es" id="p-empty" style="display:none;"><div class="ei">📦</div><div style="font-family:'Hind Siliguri'">কোনো পণ্য পাওয়া যায়নি</div></div>
+  <div class="es" id="p-loading" style="display:none;"><div class="ei">⏳</div><div style="font-family:'Hind Siliguri'">পণ্য লোড হচ্ছে...</div></div>
+  <div class="es" id="p-retry" style="display:none;"><div class="ei">⚠️</div><div style="font-family:'Hind Siliguri'">পণ্য লোড করতে সমস্যা হয়েছে</div><button onclick="loadProducts()" style="margin-top:10px;padding:8px 18px;border-radius:8px;border:none;background:var(--gold,#D4AF37);font-family:'Hind Siliguri';cursor:pointer">আবার চেষ্টা করুন</button></div>
 </div>
 
 <!-- OFFERS PAGE -->
@@ -623,6 +625,7 @@ const ORDERS_COL = db.collection('metrobd_orders');
 const gd=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d;}catch(e){return d;}};
 const sd=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 let products=[], categories=[], settings={}, banners=[];
+let productsLoading=true, productsError=false;
 let cart=gd('mb_cart',[]);
 let curCat='all', curProd=null, curQty=1, delType='outside', selPayType='cod';
 // Tracks the Firestore doc ID of the in-progress "draft" order created from partially-filled
@@ -987,12 +990,25 @@ function filterCat(cat,el){curCat=cat;document.querySelectorAll('.cat-chip').for
 // PRODUCTS
 // ══════════════════════════════════
 function renderProducts(){
+  const grid=document.getElementById('products-grid'),empty=document.getElementById('p-empty'),loadingEl=document.getElementById('p-loading'),retryEl=document.getElementById('p-retry');
+  // Still waiting on the first Firestore response — show a spinner, not "no products found".
+  if(productsLoading){
+    grid.innerHTML='';empty.style.display='none';retryEl.style.display='none';loadingEl.style.display='block';
+    document.getElementById('p-count-lbl').textContent='';
+    return;
+  }
+  // Fetch failed (e.g. no internet) — show a retry option instead of silently looking empty.
+  if(productsError){
+    grid.innerHTML='';empty.style.display='none';loadingEl.style.display='none';retryEl.style.display='block';
+    document.getElementById('p-count-lbl').textContent='';
+    return;
+  }
+  loadingEl.style.display='none';retryEl.style.display='none';
   const search=(document.getElementById('search-input').value||'').toLowerCase();
   let f=products.filter(p=>p.status!=='Inactive');
   if(curCat!=='all') f=f.filter(p=>p.category===curCat);
   if(search) f=f.filter(p=>p.name.toLowerCase().includes(search));
   document.getElementById('p-count-lbl').textContent=f.length+' টি পণ্য';
-  const grid=document.getElementById('products-grid'),empty=document.getElementById('p-empty');
   if(!f.length){grid.innerHTML='';empty.style.display='block';return;}
   empty.style.display='none';
   grid.innerHTML=f.map(p=>{
@@ -1310,19 +1326,28 @@ STORE_DOC.onSnapshot(doc=>{
   showToast('সেটিংস লোড করতে সমস্যা — ইন্টারনেট চেক করুন','#EF4444');
 });
 
-// Products: loaded once on page load from their own (small) collection — NOT realtime by default,
-// since a customer browsing the shop doesn't need millisecond-fresh stock updates, and this avoids
-// re-rendering the whole grid every time an admin edits something elsewhere.
-PRODUCTS_COL.get().then(snap=>{
-  products = snap.docs.map(d=>({...d.data(), _docId:d.id}));
-  renderProducts();
-  // Re-render the banner's depth-tunnel now that product photos are available too (in case
-  // there weren't enough banner images alone to fill the tunnel nicely).
-  renderCustomerBanners();
-}).catch(err=>{
-  console.error('Firebase products load error:',err);
-  showToast('পণ্য লোড করতে সমস্যা — ইন্টারনেট চেক করুন','#EF4444');
-});
+// Products: realtime listener (onSnapshot) instead of a one-time get(). This fixes the bug where
+// the page would show "No products found" on first load — get() could be slow/fail on weak mobile
+// connections with no loading indicator, so the empty-state showed before data ever arrived.
+// onSnapshot fires as soon as it has data (from cache or server) and keeps listening, so once the
+// connection succeeds the grid updates itself without needing a manual page refresh.
+let productsUnsub=null;
+function loadProducts(){
+  productsLoading=true; productsError=false; renderProducts();
+  if(productsUnsub) productsUnsub(); // avoid stacking duplicate listeners if retried manually
+  productsUnsub = PRODUCTS_COL.onSnapshot(snap=>{
+    products = snap.docs.map(d=>({...d.data(), _docId:d.id}));
+    productsLoading=false; productsError=false;
+    renderProducts();
+    renderCustomerBanners();
+  }, err=>{
+    console.error('Firebase products load error:',err);
+    productsLoading=false; productsError=true;
+    renderProducts();
+    showToast('পণ্য লোড করতে সমস্যা — ইন্টারনেট চেক করুন','#EF4444');
+  });
+}
+loadProducts();
 </script>
 </body>
 </html>
