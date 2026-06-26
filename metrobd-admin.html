@@ -636,6 +636,8 @@ tr:hover td{background:rgba(0,0,0,0.02);}
       <div class="fg"><label>Customer Name *</label><input type="text" id="eo-name"></div>
       <div class="fg"><label>Phone *</label><input type="tel" id="eo-phone"></div>
       <div class="fg" style="grid-column:1/-1"><label>Address *</label><textarea id="eo-address" style="min-height:55px;"></textarea></div>
+      <div class="fg"><label>City Name</label><select id="eo-city" onchange="onEditOrderCityChange()"><option value="">Select a City</option></select></div>
+      <div class="fg"><label>Zone Name</label><select id="eo-zone"><option value="">Select a Zone</option></select></div>
       <div class="fg"><label>Product</label><select id="eo-prod" onchange="onEditOrderProductChange()"><option value="">Select Product</option></select></div>
       <div class="fg"><label>Quantity</label><input type="number" id="eo-qty" min="1" value="1"></div>
       <div class="fg"><label>Price (৳, per item)</label><input type="number" id="eo-price" value="0"></div>
@@ -875,18 +877,8 @@ function doLogin(){
     const d=doc.exists?doc.data():{};
     adminPass = d.adminPass || gd('mb_pass','admin123');
     if(p===adminPass){
-      categories=d.categories||[];
-      couriers=d.couriers&&d.couriers.length?d.couriers:couriers;
-      users=d.users&&d.users.length?d.users:users;
-      settings=d.settings||{}; banners=d.banners||[];
-      dataLoaded=true;
-      startRealtimeSync();
-      document.getElementById('login-page').style.display='none';
-      document.getElementById('admin-panel').style.display='block';
-      loadProducts().then(()=>{
-        updateCourierSelects();
-        loadDashboard();
-      });
+      sessionStorage.setItem('mb_admin_session','1');
+      enterAdminPanel(d);
       if(btn){btn.textContent='🔐 Login';btn.disabled=false;}
     } else {
       document.getElementById('login-err').style.display='block';
@@ -899,7 +891,39 @@ function doLogin(){
   });
 }
 
+// Shared by both a fresh password login and an auto-resumed session (after a page refresh) —
+// loads all the admin's data and switches the UI from the login screen to the dashboard.
+function enterAdminPanel(d){
+  categories=d.categories||[];
+  couriers=d.couriers&&d.couriers.length?d.couriers:couriers;
+  users=d.users&&d.users.length?d.users:users;
+  settings=d.settings||{}; banners=d.banners||[];
+  dataLoaded=true;
+  startRealtimeSync();
+  document.getElementById('login-page').style.display='none';
+  document.getElementById('admin-panel').style.display='block';
+  loadProducts().then(()=>{
+    updateCourierSelects();
+    loadDashboard();
+  });
+}
+
+// On page load, if this browser tab already has a valid admin session (set during a previous
+// successful login in this same tab), skip straight to the dashboard instead of showing the
+// login form again. The session is cleared on explicit Logout or when the tab/browser closes.
+if(sessionStorage.getItem('mb_admin_session')==='1'){
+  STORE_DOC.get().then(doc=>{
+    const d = doc.exists ? doc.data() : {};
+    adminPass = d.adminPass || gd('mb_pass','admin123');
+    enterAdminPanel(d);
+  }).catch(err=>{
+    console.error('Auto-resume session error:', err);
+    sessionStorage.removeItem('mb_admin_session'); // fall back to showing the login form
+  });
+}
+
 function doLogout(){
+  sessionStorage.removeItem('mb_admin_session');
   document.getElementById('admin-panel').style.display='none';
   document.getElementById('login-page').style.display='flex';
   document.getElementById('l-pass').value='';
@@ -1181,7 +1205,7 @@ function viewOrder(docId){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
       <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">CUSTOMER</div><div style="font-weight:600">${o.name}</div><div style="font-size:12px;color:var(--muted)">${o.phone}</div></div>
       <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">STATUS</div><span class="badge ${sc(o.status)}">${o.status}</span></div>
-      <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">ADDRESS</div><div style="font-size:12px">${o.address||'-'}</div></div>
+      <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">ADDRESS</div><div style="font-size:12px">${o.address||'-'}${o.city?`<br>${o.city}${o.zone?', '+o.zone:''}`:''}</div></div>
       <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">PAYMENT</div><div style="font-size:12px">${o.payment||'-'}</div></div>
       <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">COURIER</div><div style="font-size:12px">${o.courier||'—'}</div></div>
       <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">DATE</div><div style="font-size:12px">${o.date}</div></div>
@@ -1240,6 +1264,38 @@ function findOrderAnywhere(docId){
   return findLoadedOrder(docId) || incompleteOrdersCache.find(x=>x._docId===docId);
 }
 
+// ══════════════════════════════════════════
+// CITY / ZONE — a simple Bangladesh district→area lookup used in the order edit form, mirroring
+// the City/Zone fields couriers like Pathao/Steadfast use. This is informational metadata saved
+// on the order (helps with courier handoff); it does not affect pricing since MetroBD ships free
+// nationwide regardless of city/zone.
+// ══════════════════════════════════════════
+const BD_CITY_ZONES = {
+  'Dhaka': ['Mirpur','Dhanmondi','Gulshan','Uttara','Mohammadpur','Badda','Jatrabari','Old Dhaka','Tejgaon','Banani'],
+  'Chattogram': ['Agrabad','Nasirabad','Halishahar','Pahartali','Patenga','GEC Circle'],
+  'Khulna': ['Khalishpur','Sonadanga','Boyra','Daulatpur'],
+  'Rajshahi': ['Boalia','Shaheb Bazar','Rajpara','Motihar'],
+  'Sylhet': ['Zindabazar','Amberkhana','Shahporan','Tilagor'],
+  'Barisal': ['Sadar Road','Nathullabad','Band Road'],
+  'Rangpur': ['Jahaj Company More','Dhap','Modern More'],
+  'Mymensingh': ['Town Hall','Choto Bazar','Ganginarpar'],
+  'Comilla': ['Kandirpar','Race Course','Tomsom Bridge'],
+  'Narayanganj': ['Chashara','Fatullah','Siddhirganj'],
+  'Gazipur': ['Tongi','Joydebpur','Konabari']
+};
+
+function populateEditOrderCityDropdown(){
+  const sel = document.getElementById('eo-city');
+  sel.innerHTML = '<option value="">Select a City</option>' + Object.keys(BD_CITY_ZONES).map(c=>`<option>${c}</option>`).join('');
+}
+
+function onEditOrderCityChange(){
+  const city = document.getElementById('eo-city').value;
+  const zoneSel = document.getElementById('eo-zone');
+  const zones = BD_CITY_ZONES[city] || [];
+  zoneSel.innerHTML = '<option value="">Select a Zone</option>' + zones.map(z=>`<option>${z}</option>`).join('');
+}
+
 function openFullOrderEdit(docId){
   if(!docId) return;
   const o = findOrderAnywhere(docId); if(!o) return;
@@ -1254,6 +1310,11 @@ function openFullOrderEdit(docId){
   document.getElementById('eo-status').value = o.status || 'Processing';
   document.getElementById('eo-note').value = o.note || '';
   document.getElementById('eo-total').value = o.total || 0;
+
+  populateEditOrderCityDropdown();
+  document.getElementById('eo-city').value = o.city || '';
+  onEditOrderCityChange(); // builds the zone list for the restored city (if any)
+  document.getElementById('eo-zone').value = o.zone || '';
 
   // Populate product dropdown, preferring a match by productId, falling back to matching by name
   const prodSel = document.getElementById('eo-prod');
@@ -1318,6 +1379,8 @@ function saveFullOrderEdit(){
 
   const updateData = {
     name, phone, address,
+    city: document.getElementById('eo-city').value||'',
+    zone: document.getElementById('eo-zone').value||'',
     product: prod ? prod.name : (document.getElementById('eo-prod').selectedOptions[0]?.textContent.replace(' (পণ্য তালিকায় নেই)','') || ''),
     productId: pid || null,
     productImage: mainImg,
