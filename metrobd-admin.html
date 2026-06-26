@@ -846,6 +846,13 @@ function startNewOrderWatcher(){
       lastSeenOrderTs = latestTs;
       return;
     }
+    // Skip Incomplete drafts entirely — the bell should only ring for a real, completed
+    // order (status 'Processing'). A draft later gets upgraded in-place to 'Processing',
+    // which bumps createdAtTs again; we still want exactly ONE ring, at that point.
+    if(latest.status==='Incomplete'){
+      lastSeenOrderTs = latestTs; // remember it so the later upgrade is still detected as "newer"
+      return;
+    }
     if(latestTs > lastSeenOrderTs){
       lastSeenOrderTs = latestTs;
       newOrderCount++;
