@@ -607,6 +607,7 @@ tr:hover td{background:rgba(0,0,0,0.02);}
     <div class="md-title" id="vo-title">Order Details</div>
     <div id="vo-content"></div>
     <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
+      <button class="btn btn-w btn-sm" onclick="openFullOrderEdit(curViewOId)">✏️ Edit Order</button>
       <button class="btn btn-o btn-sm" onclick="printSingle()">🖨️ Print Invoice</button>
       <button class="btn btn-p btn-sm" onclick="cm('view-order-modal')">Close</button>
     </div>
@@ -623,6 +624,35 @@ tr:hover td{background:rgba(0,0,0,0.02);}
     </div>
     <div class="fg"><label>Courier</label><select id="es-cou"><option value="">Select Courier</option></select></div>
     <button class="btn btn-p" onclick="updateOS()" style="width:100%;margin-top:4px;">✅ Update</button>
+  </div>
+</div>
+
+<!-- Full Order Edit -->
+<div class="mo" id="edit-order-modal">
+  <div class="md" style="max-width:600px;">
+    <button class="mc" onclick="cm('edit-order-modal')">✕</button>
+    <div class="md-title">✏️ Edit Order — <span id="eo-invoice" style="color:var(--accent);"></span></div>
+    <div class="fg-2">
+      <div class="fg"><label>Customer Name *</label><input type="text" id="eo-name"></div>
+      <div class="fg"><label>Phone *</label><input type="tel" id="eo-phone"></div>
+      <div class="fg" style="grid-column:1/-1"><label>Address *</label><textarea id="eo-address" style="min-height:55px;"></textarea></div>
+      <div class="fg"><label>Product</label><select id="eo-prod" onchange="onEditOrderProductChange()"><option value="">Select Product</option></select></div>
+      <div class="fg"><label>Quantity</label><input type="number" id="eo-qty" min="1" value="1"></div>
+      <div class="fg"><label>Price (৳, per item)</label><input type="number" id="eo-price" value="0"></div>
+      <div class="fg"><label>Discount (৳)</label><input type="number" id="eo-disc" value="0"></div>
+      <div class="fg"><label>Courier</label><select id="eo-cou"><option value="">Select Courier</option></select></div>
+      <div class="fg"><label>Status</label><select id="eo-status"><option>Processing</option><option>Payment Pending</option><option>On Hold</option><option>Invoiced</option><option>Delivered</option><option>Completed</option><option>Canceled</option><option>Incomplete</option></select></div>
+      <div class="fg" style="grid-column:1/-1"><label>Note</label><input type="text" id="eo-note" placeholder="Optional"></div>
+      <div class="fg" style="grid-column:1/-1">
+        <label>Total (auto-calculated, editable)</label>
+        <input type="number" id="eo-total" value="0">
+        <div style="font-size:11px;color:var(--muted);margin-top:3px;">💡 Quantity/Price/Discount বদলালে Total auto-update হবে, চাইলে নিজেও ঠিক করে নিতে পারেন।</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="btn btn-p" onclick="saveFullOrderEdit()" style="flex:1;">💾 Save Changes</button>
+      <button class="btn btn-o" onclick="cm('edit-order-modal')">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -827,6 +857,7 @@ function saveAll(){
 let curOF = 'all';
 let editP=null, editC=null, editCou=null, editU=null, editB=null;
 let curEditOId = null;
+let curViewOId = null;
 let curEditOSnapshotRef = null; // Firestore doc ref of order currently open in edit-status modal
 let curPrintO = null;
 
@@ -1006,9 +1037,10 @@ function saveOrder(){
   const price = prod?(prod.sale||prod.regular||0):0;
   const total = (price*qty)-disc;
   const now = new Date();
+  const mainImg = prod ? ((prod.images && prod.images.length) ? prod.images[0] : (prod.imageUrl||'')) : '';
   const newOrder = {
     id:Date.now(),invoice:getInvNum(),name,phone,address:document.getElementById('oa').value,
-    product:prod?prod.name:'',productId:pid,qty,price,discount:disc,total,
+    product:prod?prod.name:'',productId:pid,productImage:mainImg,qty,price,discount:disc,total,
     courier:document.getElementById('ocou').value,payment:document.getElementById('opay').value,
     status:document.getElementById('ost').value,note:document.getElementById('onote').value,
     date:now.toISOString().split('T')[0],time:now.toLocaleTimeString(),
@@ -1116,13 +1148,19 @@ function renderOrders(){
     <td><input type="checkbox" class="ocb" value="${o._docId}"></td>
     <td><div style="font-size:12px;color:var(--accent);font-weight:600">${o.invoice}</div><div style="font-size:11px;color:var(--muted)">${o.time||''}</div>${o.isNew?'<span class="badge Active" style="font-size:10px">New</span>':''}</td>
     <td><div style="font-weight:600;font-size:13px">${o.name||'-'}</div><div style="font-size:11px;color:var(--muted)">📞 ${o.phone||'-'}</div><div style="font-size:11px;color:var(--muted)">📍 ${(o.address||'').substring(0,25)}${(o.address||'').length>25?'...':''}</div></td>
-    <td style="font-size:12px">📦 ${o.product||'-'} x${o.qty||1}</td>
+    <td style="font-size:12px"><div style="display:flex;align-items:center;gap:6px;">
+      <div style="width:28px;height:28px;border-radius:5px;overflow:hidden;background:var(--surface);border:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+        ${o.productImage?`<img src="${o.productImage}" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display='none'">`:'📦'}
+      </div>
+      <span>${o.product||'-'} x${o.qty||1}</span>
+    </div></td>
     <td style="color:var(--green);font-weight:700">৳${(o.total||0).toLocaleString()}</td>
     <td style="font-size:12px">${o.courier||'—'}</td>
     <td style="font-size:12px">${o.date||''}</td>
     <td><span class="badge ${sc(o.status)}">${o.status}</span></td>
     <td><div class="ci">
       <button class="btn btn-o btn-sm" onclick="viewOrder('${o._docId}')" title="View">👁️</button>
+      <button class="btn btn-p btn-sm" onclick="openFullOrderEdit('${o._docId}')" title="Edit">✏️</button>
       <button class="btn btn-w btn-sm" onclick="openES('${o._docId}')" title="Status">↕️</button>
       <button class="btn btn-d btn-sm" onclick="delOrder('${o._docId}')" title="Delete">🗑️</button>
     </div></td>
@@ -1137,6 +1175,7 @@ function findLoadedOrder(docId){ return orders.find(x=>x._docId===docId); }
 function viewOrder(docId){
   const o = findLoadedOrder(docId); if(!o) return;
   curPrintO = o;
+  curViewOId = docId;
   document.getElementById('vo-title').textContent = '📋 '+o.invoice;
   document.getElementById('vo-content').innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
@@ -1148,7 +1187,14 @@ function viewOrder(docId){
       <div><div style="font-size:11px;color:var(--muted);margin-bottom:3px">DATE</div><div style="font-size:12px">${o.date}</div></div>
     </div>
     <div style="background:var(--surface);border-radius:8px;padding:12px;">
-      <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px"><span>📦 ${o.product||'-'} x${o.qty||1}</span><span style="color:var(--green)">৳${((o.price||0)*(o.qty||1)).toLocaleString()}</span></div>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px;">
+        <div style="width:54px;height:54px;border-radius:8px;overflow:hidden;background:var(--card);border:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+          ${o.productImage?`<img src="${o.productImage}" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display='none'">`:'<span style="font-size:22px;">📦</span>'}
+        </div>
+        <div style="flex:1;display:flex;justify-content:space-between;font-size:13px;">
+          <span>${o.product||'-'} x${o.qty||1}</span><span style="color:var(--green)">৳${((o.price||0)*(o.qty||1)).toLocaleString()}</span>
+        </div>
+      </div>
       ${o.discount?`<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span>Discount</span><span style="color:var(--red)">-৳${o.discount}</span></div>`:''}
       <div style="height:1px;background:var(--border);margin:8px 0"></div>
       <div style="display:flex;justify-content:space-between;font-weight:700;font-size:15px"><span>Total</span><span style="color:var(--green)">৳${(o.total||0).toLocaleString()}</span></div>
@@ -1181,6 +1227,128 @@ function updateOS(){
   }).catch(err=>{
     console.error('Update status error:',err);
     toast('Update করতে সমস্যা হয়েছে','var(--red)');
+  });
+}
+
+// ══════════════════════════════════════════
+// FULL ORDER EDIT — lets admin change every field of an order (customer info, product,
+// quantity, price, discount, courier, status, note), not just status/courier like the
+// quick "Change Status" modal above. Looks up the order wherever it's currently cached
+// (main orders list or the incomplete-orders cache) so it works from either page.
+// ══════════════════════════════════════════
+function findOrderAnywhere(docId){
+  return findLoadedOrder(docId) || incompleteOrdersCache.find(x=>x._docId===docId);
+}
+
+function openFullOrderEdit(docId){
+  if(!docId) return;
+  const o = findOrderAnywhere(docId); if(!o) return;
+  curEditOId = docId;
+  document.getElementById('eo-invoice').textContent = o.invoice || '';
+  document.getElementById('eo-name').value = (o.name && o.name!=='(নাম নেই)') ? o.name : '';
+  document.getElementById('eo-phone').value = o.phone || '';
+  document.getElementById('eo-address').value = o.address || '';
+  document.getElementById('eo-qty').value = o.qty || 1;
+  document.getElementById('eo-price').value = o.price || 0;
+  document.getElementById('eo-disc').value = o.discount || 0;
+  document.getElementById('eo-status').value = o.status || 'Processing';
+  document.getElementById('eo-note').value = o.note || '';
+  document.getElementById('eo-total').value = o.total || 0;
+
+  // Populate product dropdown, preferring a match by productId, falling back to matching by name
+  const prodSel = document.getElementById('eo-prod');
+  prodSel.innerHTML = '<option value="">Select Product</option>' + products.map(p=>{
+    const isSelected = (o.productId && String(o.productId)===String(p.id)) || (!o.productId && p.name===o.product);
+    return `<option value="${p.id}" ${isSelected?'selected':''}>${p.name} — ৳${p.sale||p.regular}</option>`;
+  }).join('');
+  // If the order's product no longer exists in the catalog, keep its name visible via a disabled option
+  if(o.product && ![...prodSel.options].some(opt=>opt.selected && opt.value)){
+    const keepOpt = document.createElement('option');
+    keepOpt.value=''; keepOpt.textContent = o.product+' (পণ্য তালিকায় নেই)'; keepOpt.selected=true;
+    prodSel.insertBefore(keepOpt, prodSel.firstChild.nextSibling);
+  }
+
+  // Populate courier dropdown
+  const couSel = document.getElementById('eo-cou');
+  couSel.innerHTML = '<option value="">Select Courier</option>' + couriers.map(c=>`<option ${o.courier===c.name?'selected':''}>${c.name}</option>`).join('');
+
+  cm('view-order-modal');
+  om('edit-order-modal');
+}
+
+// When the admin picks a different product in the edit form, auto-fill its current price
+// (admin can still override it manually afterward) and recalculate the total.
+function onEditOrderProductChange(){
+  const pid = document.getElementById('eo-prod').value;
+  const prod = products.find(p=>String(p.id)===String(pid));
+  if(prod){ document.getElementById('eo-price').value = prod.sale || prod.regular || 0; }
+  recalcEditOrderTotal();
+}
+
+function recalcEditOrderTotal(){
+  const qty = parseInt(document.getElementById('eo-qty').value)||1;
+  const price = parseFloat(document.getElementById('eo-price').value)||0;
+  const disc = parseFloat(document.getElementById('eo-disc').value)||0;
+  document.getElementById('eo-total').value = Math.max(0, (qty*price)-disc);
+}
+['eo-qty','eo-price','eo-disc'].forEach(id=>{
+  document.addEventListener('DOMContentLoaded', ()=>{
+    const el = document.getElementById(id);
+    if(el) el.addEventListener('input', recalcEditOrderTotal);
+  });
+});
+// Also bind immediately in case this script runs after DOMContentLoaded already fired
+(function(){
+  ['eo-qty','eo-price','eo-disc'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el && !el._totalListenerBound){ el.addEventListener('input', recalcEditOrderTotal); el._totalListenerBound = true; }
+  });
+})();
+
+function saveFullOrderEdit(){
+  if(!curEditOId) return;
+  const name = document.getElementById('eo-name').value.trim();
+  const phone = document.getElementById('eo-phone').value.trim();
+  const address = document.getElementById('eo-address').value.trim();
+  if(!name || !phone || !address){ toast('নাম, ফোন ও ঠিকানা দিন','var(--red)'); return; }
+
+  const pid = document.getElementById('eo-prod').value;
+  const prod = products.find(p=>String(p.id)===String(pid));
+  const mainImg = prod ? ((prod.images && prod.images.length) ? prod.images[0] : (prod.imageUrl||'')) : '';
+
+  const updateData = {
+    name, phone, address,
+    product: prod ? prod.name : (document.getElementById('eo-prod').selectedOptions[0]?.textContent.replace(' (পণ্য তালিকায় নেই)','') || ''),
+    productId: pid || null,
+    productImage: mainImg,
+    qty: parseInt(document.getElementById('eo-qty').value)||1,
+    price: parseFloat(document.getElementById('eo-price').value)||0,
+    discount: parseFloat(document.getElementById('eo-disc').value)||0,
+    total: parseFloat(document.getElementById('eo-total').value)||0,
+    courier: document.getElementById('eo-cou').value||'',
+    status: document.getElementById('eo-status').value,
+    note: document.getElementById('eo-note').value
+  };
+
+  ORDERS_COL.doc(curEditOId).update(updateData).then(()=>{
+    // Update whichever local cache currently holds this order so the UI reflects changes
+    // immediately without needing a full reload.
+    const oInMain = findLoadedOrder(curEditOId);
+    if(oInMain) Object.assign(oInMain, updateData);
+    const oInIncomplete = incompleteOrdersCache.find(x=>x._docId===curEditOId);
+    if(oInIncomplete) Object.assign(oInIncomplete, updateData);
+    if(updateData.status!=='Incomplete'){ incompleteOrdersCache=incompleteOrdersCache.filter(x=>x._docId!==curEditOId); }
+
+    const active=document.querySelector('.page.active');
+    const pid2 = active ? active.id.replace('pg-','') : '';
+    if(pid2==='incomplete') renderIncomplete();
+    else renderOrders();
+
+    cm('edit-order-modal');
+    toast('অর্ডার আপডেট হয়েছে! ✅');
+  }).catch(err=>{
+    console.error('Full order edit error:', err);
+    toast('আপডেট করতে সমস্যা হয়েছে','var(--red)');
   });
 }
 
@@ -1302,7 +1470,8 @@ function renderIncomplete(search=''){
     <td style="color:var(--green)">৳${(o.total||0).toLocaleString()}</td>
     <td style="font-size:12px">${o.date}</td>
     <td><div class="ci">
-      <button class="btn btn-w btn-sm" onclick="openESIncomplete('${o._docId}')">Edit Status</button>
+      <button class="btn btn-p btn-sm" onclick="openFullOrderEdit('${o._docId}')" title="Edit">✏️</button>
+      <button class="btn btn-w btn-sm" onclick="openESIncomplete('${o._docId}')">Status</button>
       <button class="btn btn-d btn-sm" onclick="delOrder('${o._docId}')" title="Delete">🗑️</button>
     </div></td>
   </tr>`).join('');
