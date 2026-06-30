@@ -500,7 +500,7 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:22px
 <!-- PRODUCT DETAIL MODAL -->
 <div class="mo" id="pd-overlay">
   <div class="pd-modal">
-    <button class="mc" onclick="cm('pd-overlay')">✕</button>
+    <button class="mc" onclick="closeDetail()">✕</button>
     <div id="pd-content"></div>
   </div>
 </div>
@@ -591,6 +591,16 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:22px
       <div class="order-summary-table" id="cart-total"></div>
       <button class="submit-btn" onclick="checkoutCart()">অর্ডার করুন</button>
     </div>
+  </div>
+</div>
+
+<!-- EXIT-INTENT OFFER MODAL — shown once per visit when the customer tries to leave -->
+<div class="mo" id="exit-offer-overlay">
+  <div class="pd-modal" style="text-align:center;">
+    <button class="mc" onclick="cm('exit-offer-overlay')">✕</button>
+    <div style="font-family:'Hind Siliguri',sans-serif;font-weight:800;font-size:17px;color:var(--primary,#5B4FE5);margin:6px 0 4px;">⏳ যাওয়ার আগে একবার দেখুন!</div>
+    <div style="font-size:13px;color:var(--muted,#777);margin-bottom:14px;">আমাদের সবচেয়ে বড় অফারটি মিস করবেন না</div>
+    <div id="exit-offer-content"></div>
   </div>
 </div>
 
@@ -1076,11 +1086,111 @@ function openDetail(docId){
       <span class="qty-total">= <strong>৳<span id="pd-total">${(p.sale||p.regular||0).toLocaleString()}</span></strong></span>
     </div>
     <button class="pd-order-btn" onclick="openOrderModal('${p._docId}')">🛒 অর্ডার করুন</button>
-    <button class="pd-cart-btn" onclick="addCart('${p._docId}');cm('pd-overlay')">+ Cart-এ যোগ করুন</button>
+    <button class="pd-cart-btn" onclick="addCart('${p._docId}');closeDetail()">+ Cart-এ যোগ করুন</button>
     <a class="pd-call-btn" href="tel:01410635134">📞 কল করুন — 01410635134</a>
   `;
   om('pd-overlay');
+  // Reflect the open product in the URL so the link can be shared/used in ads.
+  // Anyone opening metro-bd.com/?product=DOCID will land directly on this product.
+  try{
+    const url=new URL(window.location.href);
+    if(url.searchParams.get('product')!==docId){
+      url.searchParams.set('product',docId);
+      history.pushState({product:docId},'',url.toString());
+    }
+  }catch(e){}
 }
+
+// Closes the product detail modal AND removes ?product=... from the URL,
+// so the address bar goes back to a clean shop link.
+function closeDetail(){
+  cm('pd-overlay');
+  try{
+    const url=new URL(window.location.href);
+    if(url.searchParams.has('product')){
+      url.searchParams.delete('product');
+      history.pushState({},'',url.toString());
+    }
+  }catch(e){}
+}
+
+// If the page is loaded with ?product=DOCID in the URL (e.g. from a Facebook ad),
+// open that product's detail modal automatically once products have loaded.
+let _deepLinkHandled=false;
+function tryOpenDeepLinkProduct(){
+  if(_deepLinkHandled) return;
+  const params=new URLSearchParams(window.location.search);
+  const pid=params.get('product');
+  if(!pid) return;
+  const p=findProd(pid);
+  if(p){
+    _deepLinkHandled=true;
+    openDetail(pid);
+  }
+}
+
+// ══════════════════════════════════
+// EXIT-INTENT OFFER POPUP
+// Shows the single best-discounted active product once per visit when the
+// customer looks like they're about to leave — desktop: mouse moves toward
+// the tab/address bar. mobile: first press of the device back button.
+// ══════════════════════════════════
+function getBestOfferProduct(){
+  const eligible = products.filter(p=>p.status!=='Inactive' && p.regular && p.sale && p.sale<p.regular);
+  if(!eligible.length) return null;
+  return eligible.reduce((best,p)=>{
+    const d = 1-(p.sale/p.regular);
+    const bd = best ? 1-(best.sale/best.regular) : -1;
+    return d>bd ? p : best;
+  }, null);
+}
+
+function showExitOffer(){
+  if(sessionStorage.getItem('mb_exit_shown')==='1') return;
+  const p = getBestOfferProduct();
+  if(!p) return; // no discounted product to show — don't interrupt the customer for nothing
+  sessionStorage.setItem('mb_exit_shown','1');
+  const disc = Math.round((1-p.sale/p.regular)*100);
+  const mainImg = (p.images && p.images.length) ? p.images[0] : p.imageUrl;
+  document.getElementById('exit-offer-content').innerHTML = `
+    <div style="position:relative;border-radius:14px;overflow:hidden;margin-bottom:12px;">
+      ${mainImg?`<img src="${mainImg}" alt="${p.name}" style="width:100%;height:200px;object-fit:cover;">`:`<div style="width:100%;height:200px;display:flex;align-items:center;justify-content:center;font-size:52px;background:#f3f3f3;">📦</div>`}
+      <div style="position:absolute;top:10px;right:10px;background:#EF4444;color:#fff;font-weight:800;font-size:13px;padding:4px 10px;border-radius:20px;">-${disc}%</div>
+    </div>
+    <div style="font-weight:700;font-size:15px;margin-bottom:6px;">${p.name}</div>
+    <div style="margin-bottom:14px;"><span style="font-weight:800;font-size:18px;color:var(--green,#22C55E);">৳${(p.sale).toLocaleString()}</span> <span style="text-decoration:line-through;color:var(--muted,#999);margin-left:6px;">৳${p.regular.toLocaleString()}</span></div>
+    <button class="pd-order-btn" onclick="cm('exit-offer-overlay');openOrderModal('${p._docId}')">🛒 এখনই অর্ডার করুন</button>
+  `;
+  om('exit-offer-overlay');
+}
+
+// Desktop: cursor moving up past the top of the viewport = heading for tab/address bar
+document.addEventListener('mouseout', function(e){
+  if(!e.relatedTarget && !e.toElement && e.clientY<=0){
+    showExitOffer();
+  }
+});
+
+// Mobile: catch the first back-button press with a history "guard" entry.
+// On load we push one extra state; the first time the user presses back,
+// popstate fires (URL doesn't actually change) and we show the offer instead
+// of letting them leave immediately. Pressing back again leaves normally.
+history.pushState({mbGuard:true},'',window.location.href);
+
+// Support browser/device back button: closing via back should also close the modal,
+// re-open a deep-linked product, or — if the customer is leaving with nothing
+// open — show the exit-intent offer once.
+window.addEventListener('popstate',function(){
+  const params=new URLSearchParams(window.location.search);
+  const pid=params.get('product');
+  if(pid){
+    const p=findProd(pid);
+    if(p) openDetail(pid);
+    return;
+  }
+  cm('pd-overlay');
+  showExitOffer();
+});
 
 let pdCurrentImgIdx = 0;
 function setPdMainImage(idx){
@@ -1300,7 +1410,7 @@ function checkoutCart(){cm('cart-overlay');openOrderModal(null);}
 // ══════════════════════════════════
 function om(id){document.getElementById(id).classList.add('active');}
 function cm(id){document.getElementById(id).classList.remove('active');}
-document.querySelectorAll('.mo').forEach(m=>m.addEventListener('click',function(e){if(e.target===this)this.classList.remove('active');}));
+document.querySelectorAll('.mo').forEach(m=>m.addEventListener('click',function(e){if(e.target===this){if(this.id==='pd-overlay'){closeDetail();}else{this.classList.remove('active');}}}));
 
 function showToast(msg,bg='#22C55E'){const el=document.getElementById('toast');el.textContent=msg;el.style.background=bg;el.style.display='block';setTimeout(()=>el.style.display='none',2500);}
 
@@ -1340,6 +1450,7 @@ function loadProducts(){
     productsLoading=false; productsError=false;
     renderProducts();
     renderCustomerBanners();
+    tryOpenDeepLinkProduct();
   }, err=>{
     console.error('Firebase products load error:',err);
     productsLoading=false; productsError=true;
